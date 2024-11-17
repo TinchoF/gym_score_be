@@ -41,7 +41,7 @@ app.use('/api/admins', adminRoutes);
 app.use('/api/gymnasts', gymnastRoutes);
 app.use('/api/judges', judgeRoutes);
 app.use('/api/assignments', assignmentRoutes);
-app.use('/api/results', resultRoutes);
+app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
 
 // MongoDB Connection
