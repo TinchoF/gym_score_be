@@ -10,5 +10,5 @@ export const calculateRankings = (scores) => {
       gymnastId,
       totalScore,
     }))
-    .sort((a, b) => b.totalScore - a.totalScore);
+    .sort((a, b) => Number(b.totalScore) - Number(a.totalScore));
 };

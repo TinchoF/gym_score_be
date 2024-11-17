@@ -24,13 +24,20 @@ router.get('/', async (req, res) => {
 // Create a gymnast
 router.post('/', async (req, res) => {
   try {
-    const newGymnast = new Gymnast(req.body);
+    // Eliminar _id del body antes de crear el nuevo objeto
+    const { _id, ...gymnastData } = req.body;
+
+    // Crear una nueva instancia del modelo sin el _id
+    const newGymnast = new Gymnast(gymnastData);
+
     await newGymnast.save();
     res.status(201).json(newGymnast);
   } catch (error) {
+    console.log(error);
     res.status(400).json({ error: 'Error creating gymnast' });
   }
 });
+
 
 // Update a gymnast
 // Actualiza la ruta PUT para que espere el ID en la URL
