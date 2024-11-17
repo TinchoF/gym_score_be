@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const AssignmentSchema = new mongoose.Schema({
+  gender: { type: String, required: true },
   group: { type: Number, required: true },
   level: { type: String, required: true },
   category: { type: String, required: true },

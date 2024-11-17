@@ -7,11 +7,12 @@ const GymnastSchema = new mongoose.Schema({
   birthDate: { type: Date, required: true },
   level: { type: String, required: true },
   category: { type: String, required: true },
-  group: { type: Number, required: true },
-  competitionTime: { type: String, required: true },
-  payment: { type: Boolean, required: true },
-  coach: { type: String, required: true },
-  institution: { type: String, required: true },
+  group: { type: Number, required: false },
+  competitionTime: { type: String, required: false },
+  payment: { type: Boolean, required: false },
+  coach: { type: String, required: false },
+  institution: { type: String, required: false },
 });
+
 
 export default mongoose.model('Gymnast', GymnastSchema);

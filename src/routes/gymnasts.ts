@@ -1,6 +1,7 @@
 
 import express from 'express';
 import Gymnast from '../models/Gymnast';
+import mongoose from 'mongoose';
 
 const router = express.Router();
 
@@ -32,15 +33,33 @@ router.post('/', async (req, res) => {
 });
 
 // Update a gymnast
-router.put('/:id', async (req, res) => {
+// Actualiza la ruta PUT para que espere el ID en la URL
+router.put('/:id', async (req, res) => { // Cambié la ruta para aceptar el ID en la URL
   try {
-    const { id } = req.params;
+    const { id } = req.params; // Obtener el ID de los parámetros de la URL
+    console.log('body', req.body); // Verificar el cuerpo de la solicitud
+
+    console.log('ID: ', id); // Asegurarse de que el ID se pasa correctamente
+
+    // Valida y convierte el ID a ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'ID no válido' });
+    }
+
+    // Actualiza el gimnasta con el ID en la URL
     const updatedGymnast = await Gymnast.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updatedGymnast) {
+      return res.status(404).json({ error: 'Gimnasta no encontrado' });
+    }
     res.json(updatedGymnast);
   } catch (error) {
-    res.status(400).json({ error: 'Error updating gymnast' });
+    console.error('Error al actualizar gimnasta:', error);
+    res.status(500).json({ error: 'Error actualizando gimnasta' });
   }
 });
+
+
+
 
 // Delete a gymnast
 router.delete('/:id', async (req, res) => {

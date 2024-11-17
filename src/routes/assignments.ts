@@ -1,7 +1,8 @@
-
 import express from 'express';
 import Assignment from '../models/Assignment';
 import Judge from '../models/Judge';
+import mongoose from 'mongoose';
+import { ObjectId } from 'mongoose'; 
 
 const router = express.Router();
 
@@ -15,10 +16,49 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Create an assignment
+
+// Eliminar un juez de una asignación
+router.delete('/:assignmentId', async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { judgeId } = req.query;  // Obtener judgeId de la query string
+
+    if (!mongoose.Types.ObjectId.isValid(judgeId as string)) {
+      return res.status(400).json({ error: 'ID no válido' });
+    }
+
+
+    // Convertir judgeId en un ObjectId válido
+    const judgeObjectId =  new mongoose.Types.ObjectId(judgeId as string);
+
+    // Encontrar la asignación que contiene el juez
+    const assignment = await Assignment.findById(assignmentId);
+
+    if (!assignment) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    // Verificar si el juez está en la asignación
+    const judgeIndex = assignment.judges.indexOf(judgeObjectId);
+    if (judgeIndex === -1) {
+      return res.status(400).json({ error: 'Judge not assigned to this assignment' });
+    }
+
+    // Eliminar el juez del array de jueces
+    assignment.judges.splice(judgeIndex, 1);
+    await assignment.save();
+
+    res.status(200).json(assignment);  // Devolver la asignación actualizada
+  } catch (error) {
+    console.error('Error removing judge:', error);
+    res.status(500).json({ error: 'Error removing judge' });
+  }
+});
+
+// Create or update an assignment
 router.post('/', async (req, res) => {
   try {
-    const { group, level, category, apparatus, schedule, judges } = req.body;
+    const { gender, group, level, category, apparatus, schedule, judges } = req.body;
 
     // Verify judges exist
     const existingJudges = await Judge.find({ _id: { $in: judges } });
@@ -26,29 +66,43 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'One or more judges not found' });
     }
 
-    const newAssignment = new Assignment({
-      group,
+    // Check if assignment with the same combination of level, category, apparatus, and schedule already exists
+    let existingAssignment = await Assignment.findOne({
+      gender,
       level,
       category,
       apparatus,
       schedule,
-      judges,
     });
 
-    await newAssignment.save();
-    res.status(201).json(newAssignment);
-  } catch (error) {
-    res.status(400).json({ error: 'Error creating assignment' });
-  }
-});
+    if (existingAssignment) {
+      // If the assignment exists but doesn't contain the judge, add the judge to the array
+      const judgeExistsInAssignment = existingAssignment.judges.includes(judges[0]); // Assuming only one judge is being added
+      if (!judgeExistsInAssignment) {
+        existingAssignment.judges.push(judges[0]);
+        await existingAssignment.save();
+        return res.status(200).json(existingAssignment);
+      } else {
+        return res.status(400).json({ error: 'Judge already assigned to this combination' });
+      }
+    } else {
+      // If no assignment exists, create a new one
+      const newAssignment = new Assignment({
+        gender,
+        group,
+        level,
+        category,
+        apparatus,
+        schedule,
+        judges,
+      });
 
-// Get unassigned combinatories
-router.get('/unassigned', async (req, res) => {
-  try {
-    const unassigned = await Assignment.find({ judges: { $size: 0 } });
-    res.json(unassigned);
+      await newAssignment.save();
+      return res.status(201).json(newAssignment);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Error fetching unassigned combinatories' });
+    console.log(error);
+    res.status(400).json({ error: 'Error creating or updating assignment' });
   }
 });
 

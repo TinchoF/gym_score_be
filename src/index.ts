@@ -9,11 +9,25 @@ import assignmentRoutes from './routes/assignments';
 import resultRoutes from './routes/results';
 import exportRoutes from './routes/export';
 import { authenticateToken } from './middlewares/authMiddleware';
+import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Verifica que MONGO_URI esté definido
+if (!process.env.MONGO_URI) {
+  console.error('MONGO_URI is not defined in the environment variables');
+  process.exit(1); // Termina el proceso con un error si no está definido
+}
+
+// Configuración de CORS
+app.use(cors({
+  origin: 'http://localhost:3000', // URL de tu frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
+  credentials: true, // Si es necesario enviar cookies o headers específicos
+}));
 
 // Middleware
 app.use(express.json());
@@ -22,7 +36,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 
 // Protected Routes
-app.use(authenticateToken);
+app.use(authenticateToken);  // Este middleware protege las siguientes rutas
 app.use('/api/admins', adminRoutes);
 app.use('/api/gymnasts', gymnastRoutes);
 app.use('/api/judges', judgeRoutes);
@@ -31,9 +45,12 @@ app.use('/api/results', resultRoutes);
 app.use('/api/export', exportRoutes);
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGO_URI || '')
+mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('Connected to MongoDB');
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
-  .catch((error) => console.error('MongoDB connection error:', error));
+  .catch((error) => {
+    console.error('MongoDB connection error:', error);
+    process.exit(1); // Termina el proceso si no se puede conectar a la base de datos
+  });
