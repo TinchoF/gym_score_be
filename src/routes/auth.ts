@@ -10,6 +10,7 @@ const router = express.Router();
 // Ruta para login
 router.post('/login', async (req, res) => {
   const { username, password, role } = req.body;  // role puede ser 'admin' o 'judge'
+  
 console
   try {
     let user;

@@ -5,7 +5,7 @@ import Judge from '../models/Judge'; // Ruta a tu modelo Judge
 export const getJudgesList = async (req: Request, res: Response) => {
   try {
     // Proyección para devolver solo el campo 'name'
-    const judges = await Judge.find({}, { name: 1, _id: 0 }); // Devuelve solo 'name' y omite '_id'
+    const judges = await Judge.find({}, { name: 1, _id: 1 });
     res.json(judges); // Retorna la lista de jueces con solo sus nombres
   } catch (error) {
     console.error('Error fetching judges list:', error);
