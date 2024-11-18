@@ -28,7 +28,6 @@ router.get('/rankings', async (req, res) => {
       Gymnast: score.gymnast.name,
       Apparatus: score.apparatus,
       Deductions: score.deductions,
-      FinalScore: score.finalScore,
     }));
 
     const filename = 'rankings.xlsx';

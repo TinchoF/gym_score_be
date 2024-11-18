@@ -52,15 +52,15 @@ mongoose.connect('mongodb://localhost:27017/gym_score')
     
     // Generar 50 gimnastas
     for (let i = 0; i < 50; i++) {
-      const gender = 'M'; // Aleatorio entre 'F' y 'M'
-      const birthDate = new Date("2014-01-01").toISOString();
+      const gender = 'F'; // Aleatorio entre 'F' y 'M'
+      const birthDate = new Date("2017-01-01").toISOString();
       const name = generateRandomName();
       const category = calculateCategory(birthDate, gender);
       const level = 'E1';
-      const competitionTime = '10:00';
+      const competitionTime = '11:00';
       const coach ='Tincho';
       const institution = "cef";
-      const group = 1
+      const group = 2
 
       // Crear un nuevo gimnasta
       const gymnast = new Gymnast({
