@@ -82,7 +82,7 @@ router.delete('/:assignmentId', async (req, res) => {
 // Create or update an assignment
 router.post('/', async (req, res) => {
   try {
-    const { gender, group, level, category, apparatus, schedule, judges } = req.body;
+    const { gender, group, level, category, apparatus, schedule, judges, tournament } = req.body;
 
     // Verify judges exist
     const existingJudges = await Judge.find({ _id: { $in: judges } });
@@ -97,6 +97,7 @@ router.post('/', async (req, res) => {
       category,
       apparatus,
       schedule,
+      tournament,
     });
 
     if (existingAssignment) {
@@ -119,6 +120,7 @@ router.post('/', async (req, res) => {
         apparatus,
         schedule,
         judges,
+        tournament,
       });
 
       await newAssignment.save();

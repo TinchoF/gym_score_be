@@ -10,6 +10,7 @@ import resultRoutes from './routes/results';
 import exportRoutes from './routes/export';
 import { authenticateToken } from './middlewares/authMiddleware';
 import cors from 'cors';
+import configRoutes from './routes/configRoutes';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/api/judges', judgeRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/config', configRoutes); 
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)

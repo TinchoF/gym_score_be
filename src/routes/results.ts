@@ -1,5 +1,7 @@
 import express from 'express';
 import Score from '../models/Score';
+import mongoose from 'mongoose';
+import Gymnast from '../models/Gymnast';
 
 
 const router = express.Router();
@@ -19,22 +21,47 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { gymnastId, apparatus, deductions, tournament } = req.body;
-    const initialScore = 10;
-    const finalScore = initialScore - deductions;
+    console.log(req.body)
 
-    // Busca un documento existente basado en gymnast, apparatus y tournament
-    const score = await Score.findOneAndUpdate(
-      { gymnast: gymnastId, apparatus, tournament }, // Filtro para coincidencias
-      { gymnast: gymnastId, apparatus, deductions, finalScore, tournament }, // Nuevos datos
-      { upsert: true, new: true } // upsert: crea si no existe, new: devuelve el documento actualizado
-    );
+    if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
+      return res.status(400).json({ error: 'ID no válido' });
+    }
+    // Verifica que gymnastId es un ObjectId válido
+    const gymnastObjectId = new mongoose.Types.ObjectId(gymnastId);
 
+
+
+    const gymnast = await Gymnast.findById(gymnastObjectId);
+if (!gymnast) {
+  return res.status(400).json({ error: 'Gymnast not found' });
+}
+
+
+    // Busca si existe el documento con la combinación de gymnastId, apparatus y tournament
+    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament });
+
+    if (score) {
+      // Si el documento existe, lo actualizamos
+      score.deductions = deductions;
+      score.save();
+    } else {
+      // Si no existe, lo creamos
+      score = await Score.create({
+        gymnast: gymnastObjectId,
+        apparatus,
+        deductions,
+        tournament,
+      });
+    }
+
+    console.log('score', score);
     res.status(201).json(score);
   } catch (error) {
     console.error(error);
     res.status(400).json({ error: 'Error submitting score' });
   }
 });
+
 
 
 export default router;
