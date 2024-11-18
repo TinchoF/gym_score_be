@@ -29,10 +29,6 @@ router.get('/judge/:judgeId', async (req, res) => {
     // Buscar todas las asignaciones donde el juez esté involucrado
     const assignments = await Assignment.find({ judges: new mongoose.Types.ObjectId(judgeId) });
 
-    if (!assignments || assignments.length === 0) {
-      return res.status(404).json({ error: 'No se encontraron asignaciones para este juez' });
-    }
-
     res.status(200).json(assignments);
   } catch (error) {
     console.error('Error fetching assignments for judge:', error);

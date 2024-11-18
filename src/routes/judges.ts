@@ -1,6 +1,7 @@
 import express from 'express';
 import Judge from '../models/Judge';
 import mongoose from 'mongoose';
+import { getJudgesList } from './authController';
 
 const router = express.Router();
 

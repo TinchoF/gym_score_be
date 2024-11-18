@@ -1,27 +1,51 @@
-
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import Admin from '../models/Admin';  // Asegúrate de que la ruta sea correcta
+import Judge from '../models/Judge';  // Asegúrate de que la ruta sea correcta
+import { getJudgesList } from './authController';
+
 
 const router = express.Router();
-const users = [
-  { username: 'admin', password: 'admin123', role: 'admin' },
-  { username: 'judge', password: 'judge123', role: 'judge' },
-];
 
-// Login Route
-router.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  const user = users.find((u) => u.username === username && u.password === password);
+// Ruta para login
+router.post('/login', async (req, res) => {
+  const { username, password, role } = req.body;  // role puede ser 'admin' o 'judge'
+console
+  try {
+    let user;
+    if (role === 'admin') {
+      // Buscar en los admins
+      user = await Admin.findOne({ username });
 
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+      // Verificar si la contraseña es correcta (en el caso de los admins la contraseña está encriptada)
+      if (!user || !user.comparePassword(password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+    } else if (role === 'judge') {
+      // Buscar en los jueces
+      user = await Judge.findOne({ name: username });
+
+      // Verificar si el juez existe
+      if (!user || user.password !== password) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Si todo es correcto, generar el token
+    const token = jwt.sign({ id: user._id, role }, process.env.JWT_SECRET || '', {
+      expiresIn: '24h',
+    });
+
+    res.json({ token });
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const token = jwt.sign({ username: user.username, role: user.role }, process.env.JWT_SECRET || '', {
-    expiresIn: '24h',
-  });
-
-  res.json({ token });
 });
+
+// Ruta para obtener la lista de jueces
+router.get('/public-judges', getJudgesList);
 
 export default router;
