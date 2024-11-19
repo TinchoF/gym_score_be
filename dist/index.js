@@ -25,10 +25,10 @@ const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 const io = new socket_io_1.Server(server, {
     cors: {
-        origin: 'http://localhost:3000',
-        methods: ['GET', 'POST'],
-        allowedHeaders: ['my-custom-header'],
-        credentials: true, // Permitir credenciales (cookies o headers)
+        origin: 'http://localhost:3000', // URL de tu frontend
+        methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
+        credentials: true, // Si es necesario enviar cookies o headers específicos
+        allowedHeaders: ['Content-Type', 'Authorization'], // Asegúrate de que los headers necesarios estén permitidos
     }
 });
 const PORT = process.env.PORT || 5000;
@@ -50,12 +50,18 @@ io.use((socket, next) => {
     });
 });
 io.on('connection', (socket) => {
-    console.log('New client connected:', socket.data.user);
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
-    });
+    console.log('New client connected:', socket.id); // Esto se ejecuta cuando un cliente se conecta
+    // Escuchar el evento de actualización de puntaje
     socket.on('scoreUpdated', (updatedScore) => {
+        console.log('Puntaje actualizado recibido:', updatedScore); // Aquí verificas el puntaje recibido
+        // Emitir el evento para todos los clientes conectados
         io.emit('scoreUpdated', updatedScore);
+        // Verificar si se está emitiendo correctamente
+        console.log('Emitiendo el evento scoreUpdated:', updatedScore);
+    });
+    // Otras acciones cuando el cliente se desconecta, etc.
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
     });
 });
 // Verifica que MONGO_URI esté definido
@@ -65,8 +71,8 @@ if (!process.env.MONGO_URI) {
 }
 // Configuración de CORS
 app.use((0, cors_1.default)({
-    origin: 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: 'http://localhost:3000', // URL de tu frontend
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
     credentials: true, // Si es necesario enviar cookies o headers específicos
 }));
 // Middleware
@@ -87,7 +93,9 @@ app.use('/api/config', configRoutes_1.default);
 mongoose_1.default.connect(process.env.MONGO_URI)
     .then(() => {
     console.log('Connected to MongoDB');
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    server.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
 })
     .catch((error) => {
     console.error('MongoDB connection error:', error);

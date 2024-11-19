@@ -32,7 +32,6 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { gymnastId, apparatus, deductions, tournament } = req.body;
-        console.log(req.body);
         if (!mongoose_1.default.Types.ObjectId.isValid(gymnastId)) {
             return res.status(400).json({ error: 'ID no válido' });
         }

@@ -20,8 +20,11 @@ const authController_1 = require("./authController");
 const router = express_1.default.Router();
 // Ruta para login
 router.post('/login', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    console.log('Log in');
     const { username, password, role } = req.body; // role puede ser 'admin' o 'judge'
-    console;
+    console.log('req.body', req.body);
+    const all = yield Admin_1.default.find();
+    console.log('all users from DB', all);
     try {
         let user;
         if (role === 'admin') {
