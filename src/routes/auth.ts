@@ -14,9 +14,6 @@ router.post('/login', async (req, res) => {
   console.log('req.body', req.body)
   const all = await Admin.find();
   console.log('all users from DB', all)
-
-  
-console
   try {
     let user;
     if (role === 'admin') {
