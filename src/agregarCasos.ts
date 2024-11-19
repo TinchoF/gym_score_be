@@ -77,7 +77,6 @@ mongoose.connect('mongodb://localhost:27017/gym_score')
       });
 
       await gymnast.save();
-      console.log(`Gimnasta ${name} agregado`);
     }
   })
   .catch((error) => {

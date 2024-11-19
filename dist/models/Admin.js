@@ -4,8 +4,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
+const bcrypt_1 = __importDefault(require("bcrypt"));
 const AdminSchema = new mongoose_1.default.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 });
+// Método para comparar las contraseñas
+AdminSchema.methods.comparePassword = function (candidatePassword) {
+    return bcrypt_1.default.compareSync(candidatePassword, this.password);
+};
 exports.default = mongoose_1.default.model('Admin', AdminSchema);

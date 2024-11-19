@@ -65,8 +65,6 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 router.put('/:id', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params; // Obtener el ID de los parámetros de la URL
-        console.log('body', req.body); // Verificar el cuerpo de la solicitud
-        console.log('ID: ', id); // Asegurarse de que el ID se pasa correctamente
         // Valida y convierte el ID a ObjectId
         if (!mongoose_1.default.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ error: 'ID no válido' });

@@ -14,58 +14,58 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const Score_1 = __importDefault(require("../models/Score"));
+const mongoose_1 = __importDefault(require("mongoose"));
+const Gymnast_1 = __importDefault(require("../models/Gymnast"));
 const router = express_1.default.Router();
 // Get results by group
-router.get('/group/:groupId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { groupId } = req.params;
-        const results = yield Score_1.default.find({ group: groupId }).populate('gymnast');
+        const results = yield Score_1.default.find();
         res.json(results);
     }
     catch (error) {
+        console.log(error);
         res.status(500).json({ error: 'Error fetching results' });
     }
 }));
 // Submit scores
 router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { gymnastId, apparatus, deductions } = req.body;
-        const initialScore = 10;
-        const finalScore = initialScore - deductions;
-        const score = new Score_1.default({
-            gymnast: gymnastId,
-            apparatus,
-            deductions,
-            finalScore,
-        });
-        yield score.save();
+        const { gymnastId, apparatus, deductions, tournament } = req.body;
+        console.log(req.body);
+        if (!mongoose_1.default.Types.ObjectId.isValid(gymnastId)) {
+            return res.status(400).json({ error: 'ID no válido' });
+        }
+        // Verifica que gymnastId es un ObjectId válido
+        const gymnastObjectId = new mongoose_1.default.Types.ObjectId(gymnastId);
+        const gymnast = yield Gymnast_1.default.findById(gymnastObjectId);
+        if (!gymnast) {
+            return res.status(400).json({ error: 'Gymnast not found' });
+        }
+        // Busca si existe el documento con la combinación de gymnastId, apparatus y tournament
+        let score = yield Score_1.default.findOne({ gymnast: gymnastObjectId, apparatus, tournament });
+        if (score) {
+            // Si el documento existe, lo actualizamos
+            score.deductions = deductions;
+            score.save();
+        }
+        else {
+            // Si no existe, lo creamos
+            score = yield Score_1.default.create({
+                gymnast: gymnastObjectId,
+                apparatus,
+                deductions,
+                tournament,
+            });
+        }
+        // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
+        const io = req.app.get('socketio'); // Acceder a la instancia de socket.io
+        io.emit('scoreUpdated', score); // Emitir el evento 'scoreUpdated' a todos los clientes
         res.status(201).json(score);
     }
     catch (error) {
+        console.error(error);
         res.status(400).json({ error: 'Error submitting score' });
-    }
-}));
-// Calculate rankings
-router.get('/rankings/:groupId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { groupId } = req.params;
-        const scores = yield Score_1.default.find({ group: groupId }).populate('gymnast');
-        const totals = scores.reduce((acc, score) => {
-            const gymnastId = score.gymnast._id.toString(); // Convertir ObjectId a string
-            const finalScore = typeof score.finalScore === 'number' ? score.finalScore : 0; // Asegurar número
-            acc[gymnastId] = (acc[gymnastId] || 0) + finalScore; // Sumar al acumulador
-            return acc;
-        }, {});
-        const rankings = Object.entries(totals)
-            .map(([gymnastId, totalScore]) => ({
-            gymnastId,
-            totalScore,
-        }))
-            .sort((a, b) => b.totalScore - a.totalScore);
-        res.json(rankings);
-    }
-    catch (error) {
-        res.status(500).json({ error: 'Error calculating rankings' });
     }
 }));
 exports.default = router;

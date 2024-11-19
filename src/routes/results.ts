@@ -21,8 +21,6 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { gymnastId, apparatus, deductions, tournament } = req.body;
-    console.log(req.body)
-
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
@@ -54,7 +52,11 @@ if (!gymnast) {
       });
     }
 
-    console.log('score', score);
+    // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
+    const io = req.app.get('socketio');  // Acceder a la instancia de socket.io
+    io.emit('scoreUpdated', score);  // Emitir el evento 'scoreUpdated' a todos los clientes
+
+
     res.status(201).json(score);
   } catch (error) {
     console.error(error);

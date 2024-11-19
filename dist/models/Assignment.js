@@ -12,5 +12,6 @@ const AssignmentSchema = new mongoose_1.default.Schema({
     apparatus: { type: String, required: true },
     schedule: { type: String, required: true },
     judges: [{ type: mongoose_1.default.Schema.Types.ObjectId, ref: 'Judge' }],
+    tournament: { type: String, required: true },
 });
 exports.default = mongoose_1.default.model('Assignment', AssignmentSchema);

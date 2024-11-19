@@ -40,7 +40,6 @@ router.get('/rankings', (req, res) => __awaiter(void 0, void 0, void 0, function
             Gymnast: score.gymnast.name,
             Apparatus: score.apparatus,
             Deductions: score.deductions,
-            FinalScore: score.finalScore,
         }));
         const filename = 'rankings.xlsx';
         (0, exportToExcel_1.exportToExcel)(data, filename);

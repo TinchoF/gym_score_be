@@ -15,13 +15,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
 const Gymnast_1 = __importDefault(require("./models/Gymnast")); // Importa el modelo correctamente
 const firstNames = [
-    'Juan', 'Ana', 'Luis', 'Maria', 'Carlos', 'Laura', 'Pedro', 'Marta',
-    'Antonio', 'Paula', 'Jose', 'Isabel', 'David', 'Elena', 'Javier', 'Carmen'
+    'Andrés', 'Beatriz', 'Carlos', 'Diana', 'Eduardo', 'Felicia', 'Gabriel', 'Helena',
+    'Ignacio', 'Juliana', 'Karla', 'Luis', 'Marta', 'Nicolás', 'Olga', 'Pablo'
 ];
 const lastNames = [
-    'Gonzalez', 'Martinez', 'Perez', 'Lopez', 'Sanchez', 'Ramirez',
-    'Torres', 'Fernandez', 'Diaz', 'Gomez', 'Hernandez', 'Moreno',
-    'Ruiz', 'Jimenez', 'Alvarez', 'Cruz'
+    'Martín', 'Lozano', 'Vega', 'Castro', 'Silva', 'Pérez', 'Mendez', 'Morales',
+    'Figueroa', 'Serrano', 'Ramos', 'Navarro', 'García', 'López', 'Castilla', 'Hidalgo'
 ];
 // Generación de un nombre aleatorio
 const generateRandomName = () => {
@@ -70,20 +69,20 @@ const calculateCategory = (birthDate, gender) => {
     }
 };
 // Conectar a la base de datos
-mongoose_1.default.connect('mongodb://localhost:27017/gymnastDB')
+mongoose_1.default.connect('mongodb://localhost:27017/gym_score')
     .then(() => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Conectado a MongoDB');
     // Generar 50 gimnastas
     for (let i = 0; i < 50; i++) {
-        const gender = Math.random() > 0.5 ? 'F' : 'M'; // Aleatorio entre 'F' y 'M'
-        const birthDate = new Date(2012 + Math.floor(Math.random() * 8), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1).toISOString();
+        const gender = 'F'; // Aleatorio entre 'F' y 'M'
+        const birthDate = new Date("2017-01-01").toISOString();
         const name = generateRandomName();
         const category = calculateCategory(birthDate, gender);
-        const level = ['E1', 'E2', 'E3', 'Pulga', 'Avanzado', 'Elite'][Math.floor(Math.random() * 6)];
-        const competitionTime = ['10:00', '10:30', '11:00', '11:30'][Math.floor(Math.random() * 4)];
-        const coach = ['Tincho', 'Pepe', 'Flor'][Math.floor(Math.random() * 3)];
-        const institution = ['CEF', 'Club 1', 'Club 2'][Math.floor(Math.random() * 3)];
-        const group = Math.floor(Math.random() * 4) + 1;
+        const level = 'E1';
+        const competitionTime = '11:00';
+        const coach = 'Tincho';
+        const institution = "cef";
+        const group = 2;
         // Crear un nuevo gimnasta
         const gymnast = new Gymnast_1.default({
             name,
@@ -98,7 +97,6 @@ mongoose_1.default.connect('mongodb://localhost:27017/gymnastDB')
             payment: true // Siempre es true en este caso
         });
         yield gymnast.save();
-        console.log(`Gimnasta ${name} agregado`);
     }
 }))
     .catch((error) => {

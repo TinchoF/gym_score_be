@@ -27,6 +27,23 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         res.status(500).json({ error: 'Error fetching assignments' });
     }
 }));
+// Obtener asignaciones de un juez específico
+router.get('/judge/:judgeId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { judgeId } = req.params;
+        // Validar que el judgeId sea un ObjectId válido
+        if (!mongoose_1.default.Types.ObjectId.isValid(judgeId)) {
+            return res.status(400).json({ error: 'ID del juez no válido' });
+        }
+        // Buscar todas las asignaciones donde el juez esté involucrado
+        const assignments = yield Assignment_1.default.find({ judges: new mongoose_1.default.Types.ObjectId(judgeId) });
+        res.status(200).json(assignments);
+    }
+    catch (error) {
+        console.error('Error fetching assignments for judge:', error);
+        res.status(500).json({ error: 'Error fetching assignments for judge' });
+    }
+}));
 // Eliminar un juez de una asignación
 router.delete('/:assignmentId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -60,7 +77,7 @@ router.delete('/:assignmentId', (req, res) => __awaiter(void 0, void 0, void 0, 
 // Create or update an assignment
 router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { gender, group, level, category, apparatus, schedule, judges } = req.body;
+        const { gender, group, level, category, apparatus, schedule, judges, tournament } = req.body;
         // Verify judges exist
         const existingJudges = yield Judge_1.default.find({ _id: { $in: judges } });
         if (existingJudges.length !== judges.length) {
@@ -73,6 +90,7 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             category,
             apparatus,
             schedule,
+            tournament,
         });
         if (existingAssignment) {
             // If the assignment exists but doesn't contain the judge, add the judge to the array
@@ -96,6 +114,7 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 apparatus,
                 schedule,
                 judges,
+                tournament,
             });
             yield newAssignment.save();
             return res.status(201).json(newAssignment);
