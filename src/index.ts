@@ -91,11 +91,11 @@ app.use(express.json());
 // Public Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/public-judges', publicJudgesRouter);
+app.use('/api/admins', adminRoutes);
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas
 app.use('/api/judges', judgeRoutes);
-app.use('/api/admins', adminRoutes);
 app.use('/api/gymnasts', gymnastRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/scores', resultRoutes);
