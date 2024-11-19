@@ -1,0 +1,26 @@
+# Node.js
+node_modules/
+dist/
+
+# Environment files
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+
+# build output
+build/
+
+# dotenv files for local development
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
