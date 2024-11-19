@@ -4,9 +4,13 @@
      "description": "Backend for GymScore application",
      "main": "src/index.ts",
      "scripts": {
-          "dev": "ts-node-dev --respawn src/index.ts",
+          "dev": "ts-node-dev --respawn --transpileOnly src/index.ts", 
           "build": "tsc",
-          "start": "node dist/index.js"
+          "start": "node dist/index.js",
+          "prod": "NODE_ENV=production node dist/index.js",
+          "lint": "eslint . --ext .ts",
+          "predeploy": "npm run build",
+          "deploy": "npm run predeploy && pm2 start dist/index.js --name gymscore-backend"
      },
      "dependencies": {
           "bcrypt": "^5.1.1",
