@@ -16,6 +16,8 @@ console
     let user;
     if (role === 'admin') {
       // Buscar en los admins
+      const all = await Admin.find();
+      console.log('all users from DB', all)
       user = await Admin.findOne({ username });
 
       // Verificar si la contraseña es correcta (en el caso de los admins la contraseña está encriptada)
