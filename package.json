@@ -10,8 +10,8 @@
           "prod": "NODE_ENV=production node dist/index.js",
           "lint": "eslint . --ext .ts",
           "predeploy": "npm run build",
-          "deploy": "npm run predeploy && pm2 start dist/index.js --name gymscore-backend"
-     },
+          "deploy": "npm run predeploy && npm run start"
+          },
      "dependencies": {
           "bcrypt": "^5.1.1",
           "bcryptjs": "^2.4.3",
