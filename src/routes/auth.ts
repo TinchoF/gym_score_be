@@ -9,15 +9,18 @@ const router = express.Router();
 
 // Ruta para login
 router.post('/login', async (req, res) => {
+  console.log('Log in')
   const { username, password, role } = req.body;  // role puede ser 'admin' o 'judge'
+  console.log('req.body', req.body)
+  const all = await Admin.find();
+  console.log('all users from DB', all)
+
   
 console
   try {
     let user;
     if (role === 'admin') {
       // Buscar en los admins
-      const all = await Admin.find();
-      console.log('all users from DB', all)
       user = await Admin.findOne({ username });
 
       // Verificar si la contraseña es correcta (en el caso de los admins la contraseña está encriptada)
