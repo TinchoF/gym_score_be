@@ -102,8 +102,9 @@ app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/config', configRoutes);
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, {
+  serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
+})
   .then(() => {
     console.log('Connected to MongoDB');
     server.listen(PORT, () => {
@@ -112,5 +113,6 @@ mongoose.connect(process.env.MONGO_URI)
   })
   .catch((error) => {
     console.error('MongoDB connection error:', error);
-    process.exit(1); // Termina el proceso si no se puede conectar a la base de datos
+    process.exit(1);
   });
+
