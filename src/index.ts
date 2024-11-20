@@ -22,7 +22,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: true, // URL de tu frontend
+    origin: process.env.FE_URL, // URL de tu frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
     credentials: true, // Si es necesario enviar cookies o headers específicos
     allowedHeaders: ['Content-Type', 'Authorization'], // Asegúrate de que los headers necesarios estén permitidos
@@ -80,7 +80,7 @@ if (!process.env.MONGO_URI) {
 
 // Configuración de CORS
 app.use(cors({
-  origin: 'http://localhost:3000', // URL de tu frontend
+  origin: process.env.FE_URL, // URL de tu frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
   credentials: true, // Si es necesario enviar cookies o headers específicos
 }));
