@@ -6,7 +6,6 @@ import gymnastRoutes from './routes/gymnasts';
 import judgeRoutes from './routes/judges';
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admins';
-import assignmentRoutes from './routes/assignments';
 import resultRoutes from './routes/results';
 import exportRoutes from './routes/export';
 import { authenticateToken } from './middlewares/authMiddleware';
@@ -97,7 +96,6 @@ app.use(authenticateToken);  // Este middleware protege las siguientes rutas
 app.use('/api/judges', judgeRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/gymnasts', gymnastRoutes);
-app.use('/api/assignments', assignmentRoutes);
 app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/config', configRoutes);

@@ -11,7 +11,6 @@ const gymnasts_1 = __importDefault(require("./routes/gymnasts"));
 const judges_1 = __importDefault(require("./routes/judges"));
 const auth_1 = __importDefault(require("./routes/auth"));
 const admins_1 = __importDefault(require("./routes/admins"));
-const assignments_1 = __importDefault(require("./routes/assignments"));
 const results_1 = __importDefault(require("./routes/results"));
 const export_1 = __importDefault(require("./routes/export"));
 const authMiddleware_1 = require("./middlewares/authMiddleware");
@@ -25,7 +24,7 @@ const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 const io = new socket_io_1.Server(server, {
     cors: {
-        origin: 'http://localhost:3000', // URL de tu frontend
+        origin: process.env.FE_URL, // URL de tu frontend
         methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
         credentials: true, // Si es necesario enviar cookies o headers específicos
         allowedHeaders: ['Content-Type', 'Authorization'], // Asegúrate de que los headers necesarios estén permitidos
@@ -71,7 +70,7 @@ if (!process.env.MONGO_URI) {
 }
 // Configuración de CORS
 app.use((0, cors_1.default)({
-    origin: 'http://localhost:3000', // URL de tu frontend
+    origin: process.env.FE_URL, // URL de tu frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
     credentials: true, // Si es necesario enviar cookies o headers específicos
 }));
@@ -85,12 +84,12 @@ app.use(authMiddleware_1.authenticateToken); // Este middleware protege las sigu
 app.use('/api/judges', judges_1.default);
 app.use('/api/admins', admins_1.default);
 app.use('/api/gymnasts', gymnasts_1.default);
-app.use('/api/assignments', assignments_1.default);
 app.use('/api/scores', results_1.default);
 app.use('/api/export', export_1.default);
 app.use('/api/config', configRoutes_1.default);
-// MongoDB Connection
-mongoose_1.default.connect(process.env.MONGO_URI)
+mongoose_1.default.connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
+})
     .then(() => {
     console.log('Connected to MongoDB');
     server.listen(PORT, () => {
@@ -99,5 +98,5 @@ mongoose_1.default.connect(process.env.MONGO_URI)
 })
     .catch((error) => {
     console.error('MongoDB connection error:', error);
-    process.exit(1); // Termina el proceso si no se puede conectar a la base de datos
+    process.exit(1);
 });
