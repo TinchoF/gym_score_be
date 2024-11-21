@@ -17,9 +17,6 @@ router.get('/', async (req, res) => {
 
     let query = Gymnast.find(filters);
     if (populateTournament === 'true') {
-      const t = await Tournament.find();
-      console.log('TOURNAMENTS', t);
-      console.log('POPULATE')
       query = query.populate('tournament');
     }
 
@@ -32,36 +29,53 @@ router.get('/', async (req, res) => {
 });
 
 
-// Create a gymnast
 router.post('/', async (req, res) => {
   try {
-    // Eliminar _id del body antes de crear el nuevo objeto
-    const { _id, ...gymnastData } = req.body;
+    // Extraer el campo 'tournament' y otros datos del cuerpo de la solicitud
+    const { _id, tournamentId, ...gymnastData } = req.body;
 
-    // Crear una nueva instancia del modelo sin el _id
+    // Convertir 'tournament' a ObjectId si está presente
+    if (tournamentId) {
+      gymnastData.tournament = new mongoose.Types.ObjectId(tournamentId);
+    }
+
+    // Crear una nueva instancia del modelo con los datos del gimnasta
     const newGymnast = new Gymnast(gymnastData);
 
     await newGymnast.save();
     res.status(201).json(newGymnast);
   } catch (error) {
-    console.log(error);
-    res.status(400).json({ error: 'Error creating gymnast' });
+    console.log('Error al crear gimnasta:', error);
+    res.status(400).json({ error: 'Error creando gimnasta' });
   }
 });
 
 
+
 // Update a gymnast
-// Actualiza la ruta PUT para que espere el ID en la URL
-router.put('/:id', async (req, res) => { // Cambié la ruta para aceptar el ID en la URL
+router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params; // Obtener el ID de los parámetros de la URL
-    // Valida y convierte el ID a ObjectId
+    const { id } = req.params;
+
+    // Validar que el ID del gimnasta es válido
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'ID no válido' });
+      return res.status(400).json({ error: 'ID de gimnasta no válido' });
     }
 
-    // Actualiza el gimnasta con el ID en la URL
-    const updatedGymnast = await Gymnast.findByIdAndUpdate(id, req.body, { new: true });
+    // Crear un objeto de actualización a partir del cuerpo de la solicitud
+    const updateData = { ...req.body };
+
+    console.log('updateData.tournament ANTES', updateData.tournamentId)
+
+    // Convertir 'tournament' a ObjectId si está presente en los datos de actualización
+    if (updateData.tournamentId) {
+      updateData.tournament = new mongoose.Types.ObjectId(updateData.tournamentId);
+    }
+
+    console.log('updateData.tournament DESPUES', updateData.tournament)
+
+    // Actualizar el gimnasta con los datos proporcionados
+    const updatedGymnast = await Gymnast.findByIdAndUpdate(id, updateData, { new: true });
     if (!updatedGymnast) {
       return res.status(404).json({ error: 'Gimnasta no encontrado' });
     }
