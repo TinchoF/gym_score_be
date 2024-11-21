@@ -2,24 +2,35 @@
 import express from 'express';
 import Gymnast from '../models/Gymnast';
 import mongoose from 'mongoose';
+import Tournament from '../models/Tournament';
 
 const router = express.Router();
 
 // Get all gymnasts with optional filters
 router.get('/', async (req, res) => {
   try {
-    const { level, category, group } = req.query;
+    const { level, category, group, populateTournament } = req.query;
     const filters: any = {};
     if (level) filters.level = level;
     if (category) filters.category = category;
     if (group) filters.group = group;
 
-    const gymnasts = await Gymnast.find(filters);
+    let query = Gymnast.find(filters);
+    if (populateTournament === 'true') {
+      const t = await Tournament.find();
+      console.log('TOURNAMENTS', t);
+      console.log('POPULATE')
+      query = query.populate('tournament');
+    }
+
+    const gymnasts = await query;
     res.json(gymnasts);
   } catch (error) {
+    console.log('ERROR', error)
     res.status(500).json({ error: 'Error fetching gymnasts' });
   }
 });
+
 
 // Create a gymnast
 router.post('/', async (req, res) => {

@@ -30,7 +30,7 @@ const router = express_1.default.Router();
 // Get all gymnasts with optional filters
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { level, category, group } = req.query;
+        const { level, category, group, populateTournament } = req.query;
         const filters = {};
         if (level)
             filters.level = level;
@@ -38,7 +38,11 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             filters.category = category;
         if (group)
             filters.group = group;
-        const gymnasts = yield Gymnast_1.default.find(filters);
+        let query = Gymnast_1.default.find(filters);
+        if (populateTournament) {
+            query = query.populate('tournament');
+        }
+        const gymnasts = yield query;
         res.json(gymnasts);
     }
     catch (error) {

@@ -19,6 +19,7 @@ const configRoutes_1 = __importDefault(require("./routes/configRoutes"));
 const publicJudgesRouter_1 = __importDefault(require("./routes/publicJudgesRouter"));
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const tournamentRoutes_1 = __importDefault(require("./routes/tournamentRoutes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
@@ -87,6 +88,7 @@ app.use('/api/gymnasts', gymnasts_1.default);
 app.use('/api/scores', results_1.default);
 app.use('/api/export', export_1.default);
 app.use('/api/config', configRoutes_1.default);
+app.use('/tournaments', tournamentRoutes_1.default);
 mongoose_1.default.connect(process.env.MONGO_URI, {
     serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
 })

@@ -14,6 +14,7 @@ import configRoutes from './routes/configRoutes';
 import publicJudgesRouter from './routes/publicJudgesRouter';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import tournamentRoutes from './routes/tournamentRoutes';
 
 dotenv.config();
 
@@ -99,6 +100,7 @@ app.use('/api/gymnasts', gymnastRoutes);
 app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/tournaments', tournamentRoutes);
 
 mongoose.connect(process.env.MONGO_URI, {
   serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos

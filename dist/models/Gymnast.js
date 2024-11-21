@@ -11,6 +11,7 @@ const GymnastSchema = new mongoose_1.default.Schema({
     level: { type: String, required: true },
     category: { type: String, required: true },
     group: { type: Number, required: false },
+    tournament: { type: mongoose_1.default.Schema.Types.ObjectId, ref: 'Tournament', required: false },
     competitionTime: { type: String, required: false },
     payment: { type: Boolean, required: false },
     coach: { type: String, required: false },
