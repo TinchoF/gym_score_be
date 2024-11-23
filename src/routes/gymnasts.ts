@@ -25,14 +25,16 @@ router.get('/', async (req, res) => {
 
     const enrichedGymnasts = gymnasts.map((gymnast) => {
       const birthDate = new Date(gymnast.birthDate); // Asumiendo que cada gimnasta tiene un campo `birthDate`
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-
-      // Ajustamos la edad si el cumpleaños aún no ha ocurrido este año
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      const endOfYear = new Date(new Date().getFullYear(), 11, 31); // 31 de diciembre del año actual
+    
+      let age = endOfYear.getFullYear() - birthDate.getFullYear();
+      const monthDiff = endOfYear.getMonth() - birthDate.getMonth();
+    
+      // Ajustamos la edad si el cumpleaños aún no ha ocurrido para el 31 de diciembre
+      if (monthDiff < 0 || (monthDiff === 0 && endOfYear.getDate() < birthDate.getDate())) {
         age--;
       }
+    
 
       const gender = gymnast.gender;
       let category;
