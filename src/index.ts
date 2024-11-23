@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import adminRoutes from './routes/admins';
 import resultRoutes from './routes/results';
 import exportRoutes from './routes/export';
+import rotationRoutes from './routes/rotation';
 import { authenticateToken } from './middlewares/authMiddleware';
 import cors from 'cors';
 import configRoutes from './routes/configRoutes';
@@ -101,6 +102,7 @@ app.use('/api/scores', resultRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/tournaments', tournamentRoutes);
+app.use('/api/rotations', rotationRoutes);
 
 mongoose.connect(process.env.MONGO_URI, {
   serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos

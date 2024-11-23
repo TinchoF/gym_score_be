@@ -13,6 +13,7 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const admins_1 = __importDefault(require("./routes/admins"));
 const results_1 = __importDefault(require("./routes/results"));
 const export_1 = __importDefault(require("./routes/export"));
+const rotation_1 = __importDefault(require("./routes/rotation"));
 const authMiddleware_1 = require("./middlewares/authMiddleware");
 const cors_1 = __importDefault(require("cors"));
 const configRoutes_1 = __importDefault(require("./routes/configRoutes"));
@@ -88,7 +89,8 @@ app.use('/api/gymnasts', gymnasts_1.default);
 app.use('/api/scores', results_1.default);
 app.use('/api/export', export_1.default);
 app.use('/api/config', configRoutes_1.default);
-app.use('/tournaments', tournamentRoutes_1.default);
+app.use('/api/tournaments', tournamentRoutes_1.default);
+app.use('/api/rotations', rotation_1.default);
 mongoose_1.default.connect(process.env.MONGO_URI, {
     serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
 })
