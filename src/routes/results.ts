@@ -10,53 +10,71 @@ router.get('/', async (req, res) => {
   try {
     const { apparatus, group, tournament } = req.query;
 
-    if (!apparatus && !group && !tournament) {
-      const results = await Score.find();
-      return res.json(results);
-    }
-
-    // Build the filter object based on query parameters
-    const filter:any = {};
+    // Construir el objeto de filtro basado en los parámetros de consulta
+    const filter: any = {};
 
     if (apparatus) {
       filter.apparatus = apparatus;
     }
 
-    if (group) {
-      // Assuming 'group' is stored as a number in the database
-      const groupNumber = Number(group);
-      if (!isNaN(groupNumber)) {
-        filter.group = groupNumber;
-      } else {
-        return res.status(400).json({ error: 'Invalid group parameter' });
-      }
-    }
-
     if (tournament) {
-      // Assuming 'tournament' is stored as a reference (ObjectId) in the database
-      // Validate if 'tournament' is a valid ObjectId
       const mongoose = require('mongoose');
       if (mongoose.Types.ObjectId.isValid(tournament)) {
-        filter.tournament = tournament;
+        filter.tournament = new mongoose.Types.ObjectId(tournament); // Conversión correcta
       } else {
-        return res.status(400).json({ error: 'Invalid tournament parameter' });
+        return res.status(400).json({ error: 'Parámetro de torneo inválido' });
       }
     }
 
-    // Optional: Implement additional filtering or sorting as needed
-    // For example, you might want to sort scores by apparatus or gymnast
+    // Construir el pipeline de agregación
+    const pipeline = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'gymnasts', // Asegúrate de que coincide con el nombre real de tu colección
+          localField: 'gymnast',
+          foreignField: '_id',
+          as: 'gymnast',
+        },
+      },
+      { $unwind: '$gymnast' },
+    ];
 
-    const results = await Score.find(filter)
-      .populate('gymnast') // Populate if you have references and need detailed gymnast info
-      .populate('tournament') // Similarly, populate tournament details if necessary
-      .exec();
+    if (group) {
+      const groupNumber = Number(group);
+      if (!isNaN(groupNumber)) {
+        pipeline.push({
+          $match: { 'gymnast.group': groupNumber },
+        });
+      } else {
+        return res.status(400).json({ error: 'Parámetro de grupo inválido' });
+      }
+    }
+
+    // Opcionalmente, popular detalles del torneo
+    pipeline.push({
+      $lookup: {
+        from: 'tournaments',
+        localField: 'tournament',
+        foreignField: '_id',
+        as: 'tournament',
+      },
+    });
+    pipeline.push({ $unwind: '$tournament' });
+
+    // Ejecutar el pipeline de agregación
+    const results = await Score.aggregate(pipeline);
 
     res.json(results);
   } catch (error) {
-    console.error('Error fetching scores:', error);
-    res.status(500).json({ error: 'Error fetching results' });
+    console.error('Error al obtener las puntuaciones:', error);
+    res.status(500).json({ error: 'Error al obtener los resultados' });
   }
 });
+
+
+
+
 
 // Submit scores
 router.post('/', async (req, res) => {

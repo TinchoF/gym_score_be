@@ -31,20 +31,67 @@ const router = express_1.default.Router();
 // Get all gymnasts with optional filters
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { level, category, group, populateTournament } = req.query;
+        const { level, group, populateTournament, gender } = req.query;
         const filters = {};
         if (level)
             filters.level = level;
-        if (category)
-            filters.category = category;
         if (group)
             filters.group = group;
+        if (gender)
+            filters.gender = gender;
         let query = Gymnast_1.default.find(filters);
         if (populateTournament === 'true') {
             query = query.populate('tournament');
         }
         const gymnasts = yield query;
-        res.json(gymnasts);
+        const enrichedGymnasts = gymnasts.map((gymnast) => {
+            const birthDate = new Date(gymnast.birthDate); // Asumiendo que cada gimnasta tiene un campo `birthDate`
+            const endOfYear = new Date(new Date().getFullYear(), 11, 31); // 31 de diciembre del año actual
+            let age = endOfYear.getFullYear() - birthDate.getFullYear();
+            const monthDiff = endOfYear.getMonth() - birthDate.getMonth();
+            // Ajustamos la edad si el cumpleaños aún no ha ocurrido para el 31 de diciembre
+            if (monthDiff < 0 || (monthDiff === 0 && endOfYear.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            const gender = gymnast.gender;
+            let category;
+            if (gender === 'F') {
+                if (age < 6)
+                    category = 'Pulga';
+                else if (age <= 7)
+                    category = 'Pre-mini';
+                else if (age <= 9)
+                    category = 'Mini';
+                else if (age <= 11)
+                    category = 'Pre-infantil';
+                else if (age <= 13)
+                    category = 'Infantil';
+                else if (age <= 15)
+                    category = 'Juvenil';
+                else
+                    category = 'Mayor';
+            }
+            else {
+                if (age < 6)
+                    category = 'Pre-mini';
+                else if (age <= 7)
+                    category = 'Mini';
+                else if (age <= 9)
+                    category = 'Pre-infantil';
+                else if (age <= 11)
+                    category = 'Infantil';
+                else if (age <= 13)
+                    category = 'Cadete';
+                else if (age <= 15)
+                    category = 'Juvenil';
+                else if (age <= 17)
+                    category = 'Junior';
+                else
+                    category = 'Mayor';
+            }
+            return Object.assign(Object.assign({}, gymnast.toObject()), { category });
+        });
+        res.json(enrichedGymnasts);
     }
     catch (error) {
         console.log('ERROR', error);

@@ -20,42 +20,56 @@ const router = express_1.default.Router();
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { apparatus, group, tournament } = req.query;
-        if (!apparatus && !group && !tournament) {
-            const results = yield Score_1.default.find();
-            return res.json(results);
-        }
-        // Build the filter object based on query parameters
-        const filter = {};
+        // Build the match criteria for the aggregation pipeline
+        const matchCriteria = {};
         if (apparatus) {
-            filter.apparatus = apparatus;
-        }
-        if (group) {
-            // Assuming 'group' is stored as a number in the database
-            const groupNumber = Number(group);
-            if (!isNaN(groupNumber)) {
-                filter.group = groupNumber;
-            }
-            else {
-                return res.status(400).json({ error: 'Invalid group parameter' });
-            }
+            matchCriteria.apparatus = apparatus;
         }
         if (tournament) {
-            // Assuming 'tournament' is stored as a reference (ObjectId) in the database
-            // Validate if 'tournament' is a valid ObjectId
             const mongoose = require('mongoose');
             if (mongoose.Types.ObjectId.isValid(tournament)) {
-                filter.tournament = tournament;
+                matchCriteria.tournament = new mongoose.Types.ObjectId(tournament);
             }
             else {
                 return res.status(400).json({ error: 'Invalid tournament parameter' });
             }
         }
-        // Optional: Implement additional filtering or sorting as needed
-        // For example, you might want to sort scores by apparatus or gymnast
-        const results = yield Score_1.default.find(filter)
-            .populate('gymnast') // Populate if you have references and need detailed gymnast info
-            .populate('tournament') // Similarly, populate tournament details if necessary
-            .exec();
+        // Start building the aggregation pipeline
+        const pipeline = [
+            { $match: matchCriteria },
+            {
+                $lookup: {
+                    from: 'gymnasts', // The name of the gymnast collection
+                    localField: 'gymnast',
+                    foreignField: '_id',
+                    as: 'gymnast',
+                },
+            },
+            { $unwind: '$gymnast' },
+        ];
+        if (group) {
+            const groupNumber = Number(group);
+            if (!isNaN(groupNumber)) {
+                pipeline.push({
+                    $match: { 'gymnast.group': groupNumber },
+                });
+            }
+            else {
+                return res.status(400).json({ error: 'Invalid group parameter' });
+            }
+        }
+        // Optional: Lookup tournament details if necessary
+        pipeline.push({
+            $lookup: {
+                from: 'tournaments',
+                localField: 'tournament',
+                foreignField: '_id',
+                as: 'tournament',
+            },
+        });
+        pipeline.push({ $unwind: '$tournament' });
+        // Execute the aggregation pipeline
+        const results = yield Score_1.default.aggregate(pipeline);
         res.json(results);
     }
     catch (error) {
