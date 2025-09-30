@@ -84,7 +84,8 @@ if (!process.env.MONGO_URI) {
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://gymnastic-score-5a4d6aed40d8.herokuapp.com'
+    'https://gymnastic-score-5a4d6aed40d8.herokuapp.com',
+    'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
