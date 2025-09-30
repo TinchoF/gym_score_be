@@ -13,7 +13,8 @@
           "prod": "NODE_ENV=production node dist/index.js",
           "lint": "eslint . --ext .ts",
           "predeploy": "npm run build",
-          "deploy": "npm run predeploy && npm run start"
+          "deploy": "npm run predeploy && npm run start",
+          "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --no-audit --no-fund && npm run build"
      },
      "dependencies": {
           "bcryptjs": "^2.4.3",
