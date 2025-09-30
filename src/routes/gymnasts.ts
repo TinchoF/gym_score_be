@@ -3,14 +3,17 @@ import express from 'express';
 import Gymnast from '../models/Gymnast';
 import mongoose from 'mongoose';
 import Rotation from '../models/Rotation';
+import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = express.Router();
+router.use(authenticateToken);
 
 // Get all gymnasts with optional filters
 router.get('/', async (req, res) => {
   try {
     const { level, group, populateTournament, gender } = req.query;
-    const filters: any = {};
+  const institutionId = (req as any).user.institutionId;
+  const filters: any = { institution: institutionId };
     if (level) filters.level = level;
     if (group) filters.group = group;
     if (gender) filters.gender = gender;

@@ -17,21 +17,19 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
     }
 
     const { id, role } = user as { id: string; role: string };
-
-    if (role === 'admin') {
-      // Buscar el admin en la base de datos usando el id
+    let institutionId;
+    if (role === 'admin' || role === 'super-admin') {
       const admin = await Admin.findById(id);
       if (!admin) return res.status(403).json({ error: 'Admin not found' });
+      institutionId = admin.institution;
     } else if (role === 'judge') {
-      // Buscar el juez en la base de datos usando el id
       const judge = await Judge.findById(id);
       if (!judge) return res.status(403).json({ error: 'Judge not found' });
+      institutionId = judge.institution;
     } else {
       return res.status(403).json({ error: 'Invalid role' });
     }
-
-    // Si todo es válido, continuar con la solicitud
-    (req as any).user = user;
+    (req as any).user = Object.assign({}, user as object, { institutionId });
     next();
   });
 };

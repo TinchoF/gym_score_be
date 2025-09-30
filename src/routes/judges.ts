@@ -2,13 +2,16 @@ import express from 'express';
 import Judge from '../models/Judge';
 import mongoose from 'mongoose';
 import { getJudgesList } from './authController';
+import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = express.Router();
+router.use(authenticateToken);
 
 // Get all judges
 router.get('/', async (req, res) => {
   try {
-    const judges = await Judge.find();
+    const institutionId = (req as any).user.institutionId;
+    const judges = await Judge.find({ institution: institutionId });
     res.json(judges);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching judges' });
@@ -19,7 +22,8 @@ router.get('/', async (req, res) => {
 // Create a judge
 router.post('/', async (req, res) => {
   try {
-    const newJudge = new Judge(req.body);
+    const institutionId = (req as any).user.institutionId;
+    const newJudge = new Judge({ ...req.body, institution: institutionId });
     await newJudge.save();
     res.status(201).json(newJudge);
   } catch (error) {

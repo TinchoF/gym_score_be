@@ -2,16 +2,18 @@ import express from 'express';
 import Score from '../models/Score';
 import mongoose from 'mongoose';
 import Gymnast from '../models/Gymnast';
-
+import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = express.Router();
+router.use(authenticateToken);
 
 router.get('/', async (req, res) => {
   try {
     const { apparatus, group, tournament } = req.query;
 
-    // Construir el objeto de filtro basado en los parámetros de consulta
-    const filter: any = {};
+  // Construir el objeto de filtro basado en los parámetros de consulta
+  const institutionId = (req as any).user.institutionId;
+  const filter: any = { institution: institutionId };
 
     if (apparatus) {
       filter.apparatus = apparatus;
@@ -94,13 +96,14 @@ router.post('/', async (req, res) => {
     }
 
 
-    // Busca si existe el documento con la combinación de gymnastId, apparatus y tournament
-    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament });
+    const institutionId = (req as any).user.institutionId;
+    // Busca si existe el documento con la combinación de gymnastId, apparatus y tournament y institution
+    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, institution: institutionId });
 
     if (score) {
       // Si el documento existe, lo actualizamos
       score.deductions = deductions;
-      score.save();
+      await score.save();
     } else {
       // Si no existe, lo creamos
       score = await Score.create({
@@ -108,6 +111,7 @@ router.post('/', async (req, res) => {
         apparatus,
         deductions,
         tournament,
+        institution: institutionId,
       });
     }
 

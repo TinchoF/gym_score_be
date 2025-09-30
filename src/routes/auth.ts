@@ -16,9 +16,9 @@ router.post('/login', async (req, res) => {
   console.log('all users from DB', all)
   try {
     let user;
-    if (role === 'admin') {
+    if (role === 'admin' || role === 'super-admin') {
       // Buscar en los admins
-      user = await Admin.findOne({ username });
+      user = await Admin.findOne({ username, role });
 
       // Verificar si la contraseña es correcta (en el caso de los admins la contraseña está encriptada)
       if (!user || !user.comparePassword(password)) {
@@ -36,8 +36,9 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    // Si todo es correcto, generar el token
-    const token = jwt.sign({ id: user._id, role }, process.env.JWT_SECRET || '', {
+    // Si todo es correcto, generar el token incluyendo institutionId
+    const institutionId = user.institution;
+    const token = jwt.sign({ id: user._id, role, institutionId }, process.env.JWT_SECRET || '', {
       expiresIn: '24h',
     });
 

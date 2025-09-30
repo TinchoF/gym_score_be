@@ -10,7 +10,7 @@ const GymnastSchema = new mongoose.Schema({
   competitionTime: { type: String, required: false },
   payment: { type: Boolean, required: false },
   coach: { type: String, required: false },
-  institution: { type: String, required: false },
+  institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: true },
 });
 
 export default mongoose.model('Gymnast', GymnastSchema);

@@ -1,13 +1,16 @@
 import express from 'express';
 import Tournament from '../models/Tournament';
 import Gymnast from '../models/Gymnast';
+import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = express.Router();
+router.use(authenticateToken);
 
 // Obtener todos los torneos
 router.get('/', async (req, res) => {
   try {
-    const tournaments = await Tournament.find();
+  const institutionId = (req as any).user.institutionId;
+  const tournaments = await Tournament.find({ institution: institutionId });
     res.json(tournaments);
   } catch (error) {
     console.error('Error fetching tournaments:', error);
@@ -18,10 +21,11 @@ router.get('/', async (req, res) => {
 // Crear un nuevo torneo
 router.post('/', async (req, res) => {
   try {
-    const { name } = req.body;
-    const newTournament = new Tournament({ name });
-    await newTournament.save();
-    res.status(201).json(newTournament);
+  const institutionId = (req as any).user.institutionId;
+  const { name } = req.body;
+  const newTournament = new Tournament({ name, institution: institutionId });
+  await newTournament.save();
+  res.status(201).json(newTournament);
   } catch (error) {
     console.error('Error creating tournament:', error);
     res.status(500).json({ message: 'Error creating tournament' });

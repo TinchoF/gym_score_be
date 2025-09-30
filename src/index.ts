@@ -16,6 +16,7 @@ import publicJudgesRouter from './routes/publicJudgesRouter';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import tournamentRoutes from './routes/tournamentRoutes';
+import institutionRoutes from './routes/institution';
 
 dotenv.config();
 
@@ -81,9 +82,13 @@ if (!process.env.MONGO_URI) {
 
 // Configuración de CORS
 app.use(cors({
-  origin: process.env.FE_URL, // URL de tu frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
-  credentials: true, // Si es necesario enviar cookies o headers específicos
+  origin: [
+    'http://localhost:3000',
+    'https://gymnastic-score-5a4d6aed40d8.herokuapp.com'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Middleware
@@ -92,6 +97,7 @@ app.use(express.json());
 // Public Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/public-judges', publicJudgesRouter);
+app.use('/api/institution', institutionRoutes);
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas
