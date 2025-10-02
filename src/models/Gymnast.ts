@@ -10,7 +10,8 @@ const GymnastSchema = new mongoose.Schema({
   competitionTime: { type: String, required: false },
   payment: { type: Boolean, required: false },
   coach: { type: String, required: false },
-  institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: true },
+  club: { type: String, required: false }, // Institución/club del gimnasta (texto libre)
+  institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: true }, // Multi-tenancy
 });
 
 export default mongoose.model('Gymnast', GymnastSchema);

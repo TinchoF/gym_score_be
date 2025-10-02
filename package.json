@@ -4,7 +4,7 @@
      "description": "Backend for GymScore application",
      "main": "src/index.ts",
      "engines": {
-          "node": "16.x"
+          "node": "18.x"
      },
      "scripts": {
           "dev": "ts-node-dev --respawn src/index.ts",
