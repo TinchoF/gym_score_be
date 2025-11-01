@@ -3,6 +3,7 @@ import Score from '../models/Score';
 import mongoose from 'mongoose';
 import Gymnast from '../models/Gymnast';
 import { authenticateToken } from '../middlewares/authMiddleware';
+import { calculateFinalDeductions } from '../utils/scoreCalculator';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -64,8 +65,51 @@ router.get('/', async (req, res) => {
     });
     pipeline.push({ $unwind: '$tournament' });
 
-    // Ejecutar el pipeline de agregación
-    const results = await Score.aggregate(pipeline);
+    // Ejecutar el pipeline de agregación para recuperar todas las puntuaciones por juez
+    const rawScores = await Score.aggregate(pipeline);
+
+    // Agrupar por gimnasta + aparato + tournament y calcular el puntaje final
+    const grouped: Record<string, any> = {};
+    rawScores.forEach((s: any) => {
+      const key = `${s.gymnast._id}_${s.apparatus}_${s.tournament._id}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          gymnast: s.gymnast,
+          apparatus: s.apparatus,
+          tournament: s.tournament,
+          institution: s.institution,
+          judgeScores: [],
+        };
+      }
+  // Use the judge id as _id to make it clear this id refers to the judge.
+  grouped[key].judgeScores.push({ judge: s.judge, deductions: s.deductions, _id: s.judge, scoreId: s._id });
+    });
+
+    const requestUser = (req as any).user || {};
+    const requestRole = requestUser.role;
+    const requestUserId = requestUser.id;
+
+    const results = Object.values(grouped).map((g: any) => {
+      const deductions = g.judgeScores.map((js: any) => js.deductions);
+      const final = calculateFinalDeductions(deductions);
+
+      // Default response includes finalDeduction. For judges, only expose their own score.
+      if (requestRole === 'judge') {
+        const myEntry = g.judgeScores.find((js: any) => String(js.judge) === String(requestUserId));
+        const myScore = myEntry ? myEntry.deductions : null;
+        return {
+          gymnast: g.gymnast,
+          apparatus: g.apparatus,
+          tournament: g.tournament,
+          institution: g.institution,
+          finalDeduction: final,
+          myScore,
+        };
+      }
+
+      // For admins/super-admin return full judgeScores for auditing
+      return Object.assign({}, g, { finalDeduction: final });
+    });
 
     res.json(results);
   } catch (error) {
@@ -81,7 +125,7 @@ router.get('/', async (req, res) => {
 // Submit scores
 router.post('/', async (req, res) => {
   try {
-    const { gymnastId, apparatus, deductions, tournament } = req.body;
+    const { gymnastId, judge, apparatus, deductions, tournament } = req.body;
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
@@ -97,27 +141,27 @@ router.post('/', async (req, res) => {
 
 
     const institutionId = (req as any).user.institutionId;
-    // Busca si existe el documento con la combinación de gymnastId, apparatus y tournament y institution
-    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, institution: institutionId });
+
+    // Upsert per-judge score: each judge must have a unique score per gymnast/apparatus/tournament/institution
+    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, institution: institutionId, judge });
 
     if (score) {
-      // Si el documento existe, lo actualizamos
       score.deductions = deductions;
       await score.save();
     } else {
-      // Si no existe, lo creamos
       score = await Score.create({
         gymnast: gymnastObjectId,
         apparatus,
         deductions,
         tournament,
         institution: institutionId,
+        judge,
       });
     }
 
     // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
     const io = req.app.get('socketio');  // Acceder a la instancia de socket.io
-    io.emit('scoreUpdated', score);  // Emitir el evento 'scoreUpdated' a todos los clientes
+  io.emit('scoreUpdated', score);  // Emitir el evento 'scoreUpdated' a todos los clientes
 
 
     res.status(201).json(score);
