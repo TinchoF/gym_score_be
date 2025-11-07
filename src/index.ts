@@ -24,10 +24,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FE_URL, // URL de tu frontend
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
-    credentials: true, // Si es necesario enviar cookies o headers específicos
-    allowedHeaders: ['Content-Type', 'Authorization'], // Asegúrate de que los headers necesarios estén permitidos
+    origin: [
+      'http://localhost:3000', // Desarrollo local
+      'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com' // Producción
+    ],
+    methods: ['GET', 'POST'], // Métodos permitidos para Socket.IO
+    credentials: true, // Permitir envío de cookies y headers de autenticación
+    allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
   }
 });
 
