@@ -142,9 +142,34 @@ router.post('/', async (req, res) => {
 
     const institutionId = (req as any).user.institutionId;
 
-    // Upsert per-judge score: each judge must have a unique score per gymnast/apparatus/tournament/institution
+    // Buscar el score existente
     let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, institution: institutionId, judge });
 
+    // Si la deducción es 0, eliminar el registro existente (si existe)
+    if (deductions === 0) {
+      if (score) {
+        await Score.deleteOne({ _id: score._id });
+        
+        // Emitir evento de WebSocket cuando el puntaje se elimina
+        const io = req.app.get('socketio');
+        io.emit('scoreUpdated', { 
+          _id: score._id,
+          gymnast: gymnastObjectId,
+          apparatus,
+          tournament,
+          institution: institutionId,
+          judge,
+          deleted: true 
+        });
+        
+        return res.status(200).json({ message: 'Score deleted successfully', deleted: true });
+      } else {
+        // No hay nada que eliminar
+        return res.status(200).json({ message: 'No score to delete' });
+      }
+    }
+
+    // Si la deducción es mayor que 0, actualizar o crear el registro
     if (score) {
       score.deductions = deductions;
       await score.save();
@@ -160,9 +185,8 @@ router.post('/', async (req, res) => {
     }
 
     // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
-    const io = req.app.get('socketio');  // Acceder a la instancia de socket.io
-  io.emit('scoreUpdated', score);  // Emitir el evento 'scoreUpdated' a todos los clientes
-
+    const io = req.app.get('socketio');
+    io.emit('scoreUpdated', score);
 
     res.status(201).json(score);
   } catch (error) {
