@@ -22,12 +22,28 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+
+// Lista de orígenes permitidos
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
+];
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:3000', // Desarrollo local
-      'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com' // Producción
-    ],
+    origin: (origin, callback) => {
+      // Permitir requests sin origin (como mobile apps o Postman)
+      if (!origin) return callback(null, true);
+      
+      // Remover trailing slash si existe
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      
+      if (allowedOrigins.includes(normalizedOrigin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'], // Métodos permitidos para Socket.IO
     credentials: true, // Permitir envío de cookies y headers de autenticación
     allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
@@ -83,13 +99,21 @@ if (!process.env.MONGO_URI) {
   process.exit(1); // Termina el proceso con un error si no está definido
 }
 
-// Configuración de CORS
+// Configuración de CORS para Express
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://gymnastic-score-5a4d6aed40d8.herokuapp.com',
-    'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
-  ],
+  origin: (origin, callback) => {
+    // Permitir requests sin origin (como mobile apps o Postman)
+    if (!origin) return callback(null, true);
+    
+    // Remover trailing slash si existe
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
