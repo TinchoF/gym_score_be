@@ -119,9 +119,15 @@ router.get('/by-rotation', async (req, res) => {
     const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string)
 
     // Construir el filtro de búsqueda
+    // Asegurarnos que 'group' sea number
+    const groupNumber = Number(group);
+    if (isNaN(groupNumber)) {
+      return res.status(400).json({ error: 'group no válido' });
+    }
+
     const filter: any = { 
       tournament: tournamentObjectId, 
-      group 
+      group: groupNumber,
     };
     
     // Agregar filtro por turno si se proporciona
@@ -137,7 +143,7 @@ router.get('/by-rotation', async (req, res) => {
     // Obtener las rotaciones para el aparato y los gimnastas encontrados
     const gymnastIds = gymnasts.map(gymnast => gymnast._id);
     const rotations = await Rotation.find({
-      tournament: tournamentId,
+      tournament: tournamentObjectId,
       apparatus,
       gymnast: { $in: gymnastIds }
     }).lean();
@@ -158,6 +164,31 @@ router.get('/by-rotation', async (req, res) => {
   } catch (error) {
     console.error('Error en el endpoint /by-rotation:', error);
     res.status(500).json({ error: 'Error obteniendo los gimnastas y sus rotaciones' });
+  }
+});
+
+// Obtener grupos disponibles (distinct group numbers) para un torneo y turno
+router.get('/groups', async (req, res) => {
+  try {
+    const { tournamentId, turno } = req.query;
+    if (!tournamentId) return res.status(400).json({ error: 'tournamentId requerido' });
+    if (!mongoose.Types.ObjectId.isValid(tournamentId as string)) return res.status(400).json({ error: 'tournamentId inválido' });
+
+    const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string);
+    const filter: any = { tournament: tournamentObjectId };
+    if (turno) filter.turno = turno;
+
+    const groups = await Gymnast.distinct('group', filter);
+    // Filtrar y ordenar números válidos
+    const numericGroups = groups
+      .map(g => Number(g))
+      .filter(n => !isNaN(n) && n > 0)
+      .sort((a, b) => a - b);
+
+    res.json({ groups: numericGroups });
+  } catch (error) {
+    console.error('Error en /gymnasts/groups:', error);
+    res.status(500).json({ error: 'Error obteniendo grupos' });
   }
 });
 

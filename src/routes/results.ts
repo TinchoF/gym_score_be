@@ -16,6 +16,9 @@ router.get('/', async (req, res) => {
   const institutionId = (req as any).user.institutionId;
   const filter: any = { institution: institutionId };
 
+    console.log('[DEBUG] GET /api/scores - institutionId:', institutionId);
+    console.log('[DEBUG] Query params:', { apparatus, group, tournament });
+
     if (apparatus) {
       filter.apparatus = apparatus;
     }
@@ -68,6 +71,8 @@ router.get('/', async (req, res) => {
     // Ejecutar el pipeline de agregación para recuperar todas las puntuaciones por juez
     const rawScores = await Score.aggregate(pipeline);
 
+    console.log('[DEBUG] Raw scores found:', rawScores.length);
+    
     // Agrupar por gimnasta + aparato + tournament y calcular el puntaje final
     const grouped: Record<string, any> = {};
     rawScores.forEach((s: any) => {
@@ -81,9 +86,11 @@ router.get('/', async (req, res) => {
           judgeScores: [],
         };
       }
-  // Use the judge id as _id to make it clear this id refers to the judge.
-  grouped[key].judgeScores.push({ judge: s.judge, deductions: s.deductions, _id: s.judge, scoreId: s._id });
+      // Use the judge id as _id to make it clear this id refers to the judge.
+      grouped[key].judgeScores.push({ judge: s.judge, deductions: s.deductions, _id: s.judge, scoreId: s._id });
     });
+
+    console.log('[DEBUG] Grouped scores:', Object.keys(grouped).length);
 
     const requestUser = (req as any).user || {};
     const requestRole = requestUser.role;
@@ -111,6 +118,7 @@ router.get('/', async (req, res) => {
       return Object.assign({}, g, { finalDeduction: final });
     });
 
+    console.log('[DEBUG] Results to send:', results.length);
     res.json(results);
   } catch (error) {
     console.error('Error al obtener las puntuaciones:', error);
@@ -129,21 +137,31 @@ router.post('/', async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
+
     // Verifica que gymnastId es un ObjectId válido
     const gymnastObjectId = new mongoose.Types.ObjectId(gymnastId);
-
-
 
     const gymnast = await Gymnast.findById(gymnastObjectId);
     if (!gymnast) {
       return res.status(400).json({ error: 'Gymnast not found' });
     }
 
+    // Obtener el turno del gimnasta
+    const turno = gymnast.turno;
 
     const institutionId = (req as any).user.institutionId;
 
-    // Buscar el score existente
-    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, institution: institutionId, judge });
+    // Validar y castear el judge a ObjectId
+    if (!judge) {
+      return res.status(400).json({ error: 'Judge is required' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(judge)) {
+      return res.status(400).json({ error: 'Judge ID inválido' });
+    }
+    const judgeObjectId = new mongoose.Types.ObjectId(judge);
+
+    // Buscar el score existente (usando judgeObjectId)
+    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, turno, institution: institutionId, judge: judgeObjectId });
 
     // Si la deducción es 0, eliminar el registro existente (si existe)
     if (deductions === 0) {
@@ -157,8 +175,9 @@ router.post('/', async (req, res) => {
           gymnast: gymnastObjectId,
           apparatus,
           tournament,
+          turno: score.turno,
           institution: institutionId,
-          judge,
+          judge: judgeObjectId,
           deleted: true 
         });
         
@@ -179,14 +198,15 @@ router.post('/', async (req, res) => {
         apparatus,
         deductions,
         tournament,
+        turno,
         institution: institutionId,
-        judge,
+        judge: judgeObjectId,
       });
     }
 
     // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
-    const io = req.app.get('socketio');
-    io.emit('scoreUpdated', score);
+  const io = req.app.get('socketio');
+  io.emit('scoreUpdated', score);
 
     res.status(201).json(score);
   } catch (error) {
