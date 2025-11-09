@@ -35,10 +35,17 @@ router.post('/', async (req, res) => {
 // Actualizar un torneo
 router.put('/:id', async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, groupCount, baseScore, turnos, turnoConfig } = req.body;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (groupCount !== undefined) updateData.groupCount = groupCount;
+    if (baseScore !== undefined) updateData.baseScore = baseScore;
+    if (turnos !== undefined) updateData.turnos = turnos;
+    if (turnoConfig !== undefined) updateData.turnoConfig = turnoConfig;
+    
     const tournament = await Tournament.findByIdAndUpdate(
       req.params.id,
-      { name },
+      updateData,
       { new: true }
     );
     if (!tournament) {

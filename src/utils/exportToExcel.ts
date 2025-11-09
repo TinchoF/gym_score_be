@@ -10,7 +10,7 @@ export const exportGymnastToExcel = (data: any[], filename: string) => {
     Categoría: gymnast.category,
     Grupo: gymnast.group || '',
     Torneo: gymnast.tournament?.name || '',
-    'Horario de Competencia': gymnast.competitionTime || '',
+    'Turno': gymnast.turno || '',
     Pago: gymnast.payment ? 'Sí' : 'No',
     Entrenador: gymnast.coach || '',
     Institución: gymnast.institution || '',
@@ -40,7 +40,7 @@ export const exportGymnastToExcel = (data: any[], filename: string) => {
     { wch: 15 }, // Categoría
     { wch: 10 }, // Grupo
     { wch: 20 }, // Torneo
-    { wch: 25 }, // Horario de Competencia
+    { wch: 25 }, // Turno
     { wch: 10 }, // Pago
     { wch: 20 }, // Entrenador
     { wch: 20 }, // Institución

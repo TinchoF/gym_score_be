@@ -57,7 +57,7 @@ mongoose.connect('mongodb://localhost:27017/gym_score')
       const name = generateRandomName();
       const category = calculateCategory(birthDate, gender);
       const level = 'E1';
-      const competitionTime = '11:00';
+      const turno = 'MAÑANA';
       const coach ='Tincho';
       const institution = "cef";
       const group = 2
@@ -69,7 +69,7 @@ mongoose.connect('mongodb://localhost:27017/gym_score')
         birthDate,
         level,
         category,
-        competitionTime,
+        turno,
         coach,
         institution,
         group,

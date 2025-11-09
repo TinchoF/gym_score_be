@@ -104,7 +104,7 @@ router.put('/:id', async (req, res) => {
 
 router.get('/by-rotation', async (req, res) => {
   try {
-    const { tournamentId, apparatus, group } = req.query;
+    const { tournamentId, apparatus, group, turno } = req.query;
 
     // Validar que los parámetros necesarios estén presentes
     if (!tournamentId || !apparatus || !group) {
@@ -118,12 +118,19 @@ router.get('/by-rotation', async (req, res) => {
 
     const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string)
 
-
-    // Buscar gimnastas por torneo y grupo
-    const gymnasts = await Gymnast.find({ 
+    // Construir el filtro de búsqueda
+    const filter: any = { 
       tournament: tournamentObjectId, 
       group 
-    })
+    };
+    
+    // Agregar filtro por turno si se proporciona
+    if (turno) {
+      filter.turno = turno;
+    }
+
+    // Buscar gimnastas por torneo, grupo y turno (si se proporciona)
+    const gymnasts = await Gymnast.find(filter)
       .populate('tournament') // Popula el torneo
       .lean(); // Convierte los documentos a objetos JavaScript planos
 

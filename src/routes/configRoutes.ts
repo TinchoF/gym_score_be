@@ -9,11 +9,7 @@ router.get('/', async (req, res) => {
     const config = await Config.findOne();
     if (!config) {
       // Si no existe configuración, crear una por defecto
-      const newConfig = new Config({
-        baseScore: 10,
-        tournaments: [],
-        groupCount: 0,
-      });
+      const newConfig = new Config({});
       await newConfig.save();
       return res.json(newConfig);
     }
@@ -27,10 +23,10 @@ router.get('/', async (req, res) => {
 // Actualizar configuración
 router.put('/', async (req, res) => {
   try {
-    const { baseScore, tournaments, groupCount } = req.body;
+    // Configuración global ahora está vacía, los torneos se manejan en tournamentRoutes
     const config = await Config.findOneAndUpdate(
       {},
-      { baseScore, tournaments, groupCount },
+      req.body,
       { new: true, upsert: true } // Si no existe, crea uno nuevo
     );
     res.json(config);
