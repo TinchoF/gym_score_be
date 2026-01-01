@@ -86,8 +86,19 @@ router.get('/', async (req, res) => {
           judgeScores: [],
         };
       }
-      // Use the judge id as _id to make it clear this id refers to the judge.
-      grouped[key].judgeScores.push({ judge: s.judge, deductions: s.deductions, _id: s.judge, scoreId: s._id });
+      // Incluir todos los campos de puntuación
+      grouped[key].judgeScores.push({ 
+        judge: s.judge, 
+        deductions: s.deductions,
+        startValue: s.startValue,
+        difficultyBonus: s.difficultyBonus,
+        dScore: s.dScore,
+        judgeType: s.judgeType,
+        scoringMethod: s.scoringMethod,
+        level: s.level,
+        _id: s.judge, 
+        scoreId: s._id 
+      });
     });
 
     console.log('[DEBUG] Grouped scores:', Object.keys(grouped).length);
@@ -133,7 +144,21 @@ router.get('/', async (req, res) => {
 // Submit scores
 router.post('/', async (req, res) => {
   try {
-    const { gymnastId, judge, apparatus, deductions, tournament } = req.body;
+    const { 
+      gymnastId, 
+      judge, 
+      apparatus, 
+      tournament,
+      // Campos de puntuación según método
+      deductions,
+      startValue,
+      difficultyBonus,
+      dScore,
+      judgeType, // 'E' o 'D'
+      scoringMethod,
+      level,
+    } = req.body;
+
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
@@ -161,10 +186,23 @@ router.post('/', async (req, res) => {
     const judgeObjectId = new mongoose.Types.ObjectId(judge);
 
     // Buscar el score existente (usando judgeObjectId)
-    let score = await Score.findOne({ gymnast: gymnastObjectId, apparatus, tournament, turno, institution: institutionId, judge: judgeObjectId });
+    let score = await Score.findOne({ 
+      gymnast: gymnastObjectId, 
+      apparatus, 
+      tournament, 
+      turno, 
+      institution: institutionId, 
+      judge: judgeObjectId 
+    });
 
-    // Si la deducción es 0, eliminar el registro existente (si existe)
-    if (deductions === 0) {
+    // Determinar si hay datos para guardar (cualquier campo de puntuación con valor)
+    // Importante: 0 es un valor válido (puntaje perfecto), solo null/undefined borran.
+    const hasScoreData = (deductions !== undefined && deductions !== null) ||
+                         (dScore !== undefined && dScore !== null) ||
+                         (difficultyBonus !== undefined && difficultyBonus !== null);
+
+    // Si no hay datos de puntuación, eliminar el registro existente (si existe)
+    if (!hasScoreData) {
       if (score) {
         await Score.deleteOne({ _id: score._id });
         
@@ -188,25 +226,55 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Si la deducción es mayor que 0, actualizar o crear el registro
+    // Preparar datos de puntuación
+    const scoreData: any = {
+      gymnast: gymnastObjectId,
+      apparatus,
+      tournament,
+      turno,
+      institution: institutionId,
+      judge: judgeObjectId,
+    };
+
+    // Agregar campos según lo que se envíe
+    if (deductions !== undefined && deductions !== null) {
+      scoreData.deductions = deductions;
+    }
+    if (startValue !== undefined && startValue !== null) {
+      scoreData.startValue = startValue;
+    }
+    if (difficultyBonus !== undefined && difficultyBonus !== null) {
+      scoreData.difficultyBonus = difficultyBonus;
+    }
+    if (dScore !== undefined && dScore !== null) {
+      scoreData.dScore = dScore;
+    }
+    if (judgeType) {
+      scoreData.judgeType = judgeType;
+    }
+    if (scoringMethod) {
+      scoreData.scoringMethod = scoringMethod;
+    }
+    if (level) {
+      scoreData.level = level;
+    }
+
+    // Actualizar o crear el registro
     if (score) {
-      score.deductions = deductions;
+      // Actualizar campos existentes
+      if (deductions !== undefined) score.deductions = deductions;
+      if (startValue !== undefined) score.startValue = startValue;
+      if (difficultyBonus !== undefined) score.difficultyBonus = difficultyBonus;
+      if (dScore !== undefined) score.dScore = dScore;
+      if (judgeType) score.judgeType = judgeType;
       await score.save();
     } else {
-      score = await Score.create({
-        gymnast: gymnastObjectId,
-        apparatus,
-        deductions,
-        tournament,
-        turno,
-        institution: institutionId,
-        judge: judgeObjectId,
-      });
+      score = await Score.create(scoreData);
     }
 
     // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
-  const io = req.app.get('socketio');
-  io.emit('scoreUpdated', score);
+    const io = req.app.get('socketio');
+    io.emit('scoreUpdated', score);
 
     res.status(201).json(score);
   } catch (error) {

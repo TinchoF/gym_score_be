@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
     const gymnasts = await query;
 
     const enrichedGymnasts = gymnasts.map((gymnast) => {
-      const category = calculateCategory(gymnast.birthDate, gymnast.gender as 'F' | 'M');
+      const category = calculateCategory(gymnast.birthDate as Date, gymnast.gender as 'F' | 'M');
 
       return {
         ...gymnast.toObject(),
@@ -151,7 +151,7 @@ router.get('/by-rotation', async (req, res) => {
     // Combinar gimnastas con su rotación correspondiente y calcular categoría
     const results = gymnasts.map(gymnast => {
       const rotation = rotations.find(rot => rot.gymnast.toString() === gymnast._id.toString());
-      const category = calculateCategory(gymnast.birthDate, gymnast.gender as 'F' | 'M');
+      const category = calculateCategory(gymnast.birthDate as unknown as Date, gymnast.gender as 'F' | 'M');
       
       return {
         ...gymnast,

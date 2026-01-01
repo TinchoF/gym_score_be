@@ -1,0 +1,15 @@
+clubes: al ingreso hacer un uppercase y un trim, buscar la forma de que no escriban ligeramente diferente el mismo club -> autocomplete? crear lista de clubes en configuracion y elegir en la creacion de los gimnastas?
+
+
+Hora de compentencia: cambiar nombre a TURNO, crear turnos en configuracion y elegir para evitar nombres raros o diferentes
+
+
+permitir asignar aparatos a juces por turno
+
+
+
+desabilitar autocomplete de chrome
+
+
+✅ Agregar campo judge a scores sin juez - Script: fix-scores-without-judge.js (36 scores actualizados)
+✅ Convertir tournament de string a ObjectId en scores - Script: fix-tournament-objectid.js (456 scores actualizados)
