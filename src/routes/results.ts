@@ -4,7 +4,7 @@ import Judge from '../models/Judge';
 import mongoose from 'mongoose';
 import Gymnast from '../models/Gymnast';
 import { authenticateToken } from '../middlewares/authMiddleware';
-import { calculateFinalDeductions } from '../utils/scoreCalculator';
+import { calculateFinalDeductions, calculateFinalScore } from '../utils/scoreCalculator';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -424,6 +424,42 @@ router.post('/', async (req, res) => {
     ).length;
 
     (aggregated as any).expectedJudgesCount = expectedJudgesCount;
+
+    // Calculate final score if possible
+    const allDeductions = allApparatusScores
+      .filter(js => js.deductions !== undefined && js.deductions !== null)
+      .map(js => js.deductions!);
+    
+    const allDifficultyBonuses = allApparatusScores
+      .filter(js => js.difficultyBonus !== undefined && js.difficultyBonus !== null)
+      .map(js => js.difficultyBonus!);
+
+    const allDScores = allApparatusScores
+      .filter(js => js.dScore !== undefined && js.dScore !== null)
+      .map(js => js.dScore!);
+
+    const method = allApparatusScores[0]?.scoringMethod || scoringMethod;
+    const baseVal = allApparatusScores[0]?.startValue || startValue || 10;
+
+    // Calculate ONLY if we have at least one valid score entry (which we should)
+    const finalResult = calculateFinalScore(method, {
+      baseScore: baseVal,
+      startValue: baseVal,
+      deductions: allDeductions,
+      difficultyBonuses: allDifficultyBonuses,
+      dScores: allDScores
+    });
+
+    if (finalResult) {
+      (aggregated as any).finalScore = finalResult.finalScore;
+      (aggregated as any).finalDeduction = finalResult.finalDeduction;
+      (aggregated as any).difficultyBonus = finalResult.difficultyBonus;
+      (aggregated as any).dScore = finalResult.dScore;
+      
+      // Also pass baseStartValue/startValue explicitely if needed by frontend
+      (aggregated as any).baseStartValue = baseVal;
+      (aggregated as any).startValue = baseVal;
+    }
 
     const io = req.app.get('socketio');
     io.emit('scoreUpdated', aggregated);

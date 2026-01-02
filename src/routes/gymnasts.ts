@@ -66,6 +66,65 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Bulk update turno for multiple gymnasts - MUST be before PUT /:id
+router.put('/bulk-update-turno', async (req, res) => {
+  try {
+    const { gymnastIds, tournament, turno } = req.body;
+    const institutionId = (req as any).user.institutionId;
+
+    // Validation
+    if (!gymnastIds || !Array.isArray(gymnastIds) || gymnastIds.length === 0) {
+      return res.status(400).json({ error: 'gymnastIds debe ser un array no vacío' });
+    }
+
+    if (!tournament) {
+      return res.status(400).json({ error: 'tournament es requerido' });
+    }
+
+    if (!turno) {
+      return res.status(400).json({ error: 'turno es requerido' });
+    }
+
+    // Validate tournament ID
+    if (!mongoose.Types.ObjectId.isValid(tournament)) {
+      return res.status(400).json({ error: 'tournament ID inválido' });
+    }
+
+    // Validate all gymnast IDs
+    const invalidIds = gymnastIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ error: `IDs de gimnastas inválidos: ${invalidIds.join(', ')}` });
+    }
+
+    // Convert IDs to ObjectId
+    const gymnastObjectIds = gymnastIds.map(id => new mongoose.Types.ObjectId(id));
+    const tournamentObjectId = new mongoose.Types.ObjectId(tournament);
+
+    // Perform bulk update - only update gymnasts belonging to the user's institution
+    const result = await Gymnast.updateMany(
+      { 
+        _id: { $in: gymnastObjectIds },
+        institution: institutionId // Security: only update gymnasts from same institution
+      },
+      { 
+        $set: { 
+          tournament: tournamentObjectId,
+          turno: turno
+        } 
+      }
+    );
+
+    res.json({
+      success: true,
+      updatedCount: result.modifiedCount,
+      message: `${result.modifiedCount} gimnasta(s) actualizado(s) correctamente`
+    });
+
+  } catch (error) {
+    console.error('Error en bulk-update-turno:', error);
+    res.status(500).json({ error: 'Error actualizando gimnastas' });
+  }
+});
 
 
 // Update a gymnast
@@ -220,7 +279,6 @@ router.get('/groups', async (req, res) => {
     res.status(500).json({ error: 'Error obteniendo grupos' });
   }
 });
-
 
 
 
