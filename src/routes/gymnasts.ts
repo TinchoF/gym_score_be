@@ -135,6 +135,35 @@ router.get('/by-rotation', async (req, res) => {
       filter.turno = turno;
     }
 
+    // Filtrar por género según aparato
+    const maleApparatuses = ["Suelo", "Arzones", "Anillas", "Salto", "Paralelas", "Barra"];
+    const femaleApparatuses = ["Salto", "Paralelas", "Viga", "Suelo"];
+    
+    // CASOS ESPECIALES: Suelo y Salto y Paralelas (nombres compartidos o similares)
+    // Para simplificar, asumiremos que si el cliente manda el aparato, el backend filtra
+    // PERO: "Suelo" y "Salto" son mixtos (nombre igual).
+    // "Paralelas" en Femenina es Asimétricas, en Masculina es Paralelas.
+    // Si la app usa strings distintos, perfecto. Si usa el mismo string, tenemos ambigüedad.
+    // Viendo constants.ts del frontend:
+    // GAF: ["Salto", "Paralelas", "Viga", "Suelo"]
+    // GAM: ["Suelo", "Arzones", "Anillas", "Salto", "Paralelas", "Barra"]
+    // Hay colisión en: Suelo, Salto, Paralelas.
+    
+    // ESTRATEGIA:
+    // 1. Anillas, Arzones, Barra -> Solo Masculino (M)
+    // 2. Viga -> Solo Femenino (F)
+    // 3. Colisiones (Suelo, Salto, Paralelas): No podemos filtrar solo por nombre de aparato.
+    //    Necesitamos que el frontend envíe el género O deducirlo de otra forma.
+    //    Sin embargo, el requerimiento específico del usuario fue "en anillas no se deben ver mujeres".
+    //    Anillas es exclusivo de GAM.
+    
+    if (["Anillas", "Arzones", "Barra"].includes(apparatus as string)) {
+        filter.gender = 'M';
+    } else if (["Viga"].includes(apparatus as string)) {
+        filter.gender = 'F';
+    }
+    // Para los aparatos compartidos, no filtramos por género automáticamente a menos que cambie la lógica de nombres.
+
     // Buscar gimnastas por torneo, grupo y turno (si se proporciona)
     const gymnasts = await Gymnast.find(filter)
       .populate('tournament') // Popula el torneo

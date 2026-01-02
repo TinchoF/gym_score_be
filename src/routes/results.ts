@@ -1,5 +1,6 @@
 import express from 'express';
 import Score from '../models/Score';
+import Judge from '../models/Judge';
 import mongoose from 'mongoose';
 import Gymnast from '../models/Gymnast';
 import { authenticateToken } from '../middlewares/authMiddleware';
@@ -68,6 +69,17 @@ router.get('/', async (req, res) => {
     });
     pipeline.push({ $unwind: '$tournament' });
 
+    // Opcionalmente, popular detalles del juez
+    pipeline.push({
+      $lookup: {
+        from: 'judges',
+        localField: 'judge',
+        foreignField: '_id',
+        as: 'judge',
+      },
+    });
+    pipeline.push({ $unwind: '$judge' });
+
     // Ejecutar el pipeline de agregación para recuperar todas las puntuaciones por juez
     const rawScores = await Score.aggregate(pipeline);
 
@@ -79,6 +91,7 @@ router.get('/', async (req, res) => {
       const key = `${s.gymnast._id}_${s.apparatus}_${s.tournament._id}`;
       if (!grouped[key]) {
         grouped[key] = {
+          _id: key, // Unique ID for the group (gymnast_apparatus)
           gymnast: s.gymnast,
           apparatus: s.apparatus,
           tournament: s.tournament,
@@ -96,12 +109,15 @@ router.get('/', async (req, res) => {
         judgeType: s.judgeType,
         scoringMethod: s.scoringMethod,
         level: s.level,
-        _id: s.judge, 
+        _id: s.judge?._id || s.judge, // Ensure we have the ID here
         scoreId: s._id 
       });
     });
 
     console.log('[DEBUG] Grouped scores:', Object.keys(grouped).length);
+
+    // Fetch all judges once to calculate expectedJudgesCount
+    const allJudges = await Judge.find({ institution: institutionId }).lean();
 
     const requestUser = (req as any).user || {};
     const requestRole = requestUser.role;
@@ -111,22 +127,57 @@ router.get('/', async (req, res) => {
       const deductions = g.judgeScores.map((js: any) => js.deductions);
       const final = calculateFinalDeductions(deductions);
 
-      // Default response includes finalDeduction. For judges, only expose their own score.
+      const completedJudges = g.judgeScores
+        .filter((js: any) => {
+           // ALWAYS require deductions
+           const hasDeductions = js.deductions !== undefined && js.deductions !== null;
+           if (!hasDeductions) return false;
+           
+           if (js.scoringMethod === 'fig_code') {
+               return typeof js.dScore === 'number' && js.dScore > 0;
+           }
+           if (js.scoringMethod === 'start_value_bonus') {
+               return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
+           }
+           return true; 
+        })
+        .map((js: any) => String(js.judge?._id || js.judge));
+
+      const expectedJudgesCount = allJudges.filter((j: any) => 
+        j.apparatusAssignments?.some((a: any) => 
+          String(a.tournament) === String(g.tournament?._id || g.tournament) &&
+          String(a.turno) === String(g.gymnast?.turno) &&
+          (Array.isArray(a.apparatus) ? a.apparatus.includes(g.apparatus) : a.apparatus === g.apparatus)
+        )
+      ).length;
+
+      // Build the response object
+      const baseResult = {
+        _id: g._id,
+        gymnast: g.gymnast,
+        apparatus: g.apparatus,
+        tournament: g.tournament,
+        institution: g.institution,
+        finalDeduction: final,
+        completedJudges,
+        expectedJudgesCount,
+        judgeScores: g.judgeScores,
+        scoringMethod: g.judgeScores[0]?.scoringMethod,
+        level: g.judgeScores[0]?.level
+      };
+
       if (requestRole === 'judge') {
-        const myEntry = g.judgeScores.find((js: any) => String(js.judge) === String(requestUserId));
-        const myScore = myEntry ? myEntry.deductions : null;
+        const myEntry = g.judgeScores.find((js: any) => String(js.judge?._id || js.judge) === String(requestUserId));
         return {
-          gymnast: g.gymnast,
-          apparatus: g.apparatus,
-          tournament: g.tournament,
-          institution: g.institution,
-          finalDeduction: final,
-          myScore,
+          ...baseResult,
+          myScore: myEntry ? myEntry.deductions : null,
+          myDScore: myEntry ? myEntry.dScore : null,
+          myBonus: myEntry ? myEntry.difficultyBonus : null,
+          judgeScores: undefined // Hide all judge scores from other judges
         };
       }
 
-      // For admins/super-admin return full judgeScores for auditing
-      return Object.assign({}, g, { finalDeduction: final });
+      return baseResult;
     });
 
     console.log('[DEBUG] Results to send:', results.length);
@@ -159,6 +210,8 @@ router.post('/', async (req, res) => {
       level,
     } = req.body;
 
+    console.log('[DEBUG_POST] Payload:', JSON.stringify(req.body));
+
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
@@ -185,68 +238,95 @@ router.post('/', async (req, res) => {
     }
     const judgeObjectId = new mongoose.Types.ObjectId(judge);
 
-    // Buscar el score existente (usando judgeObjectId)
-    let score = await Score.findOne({ 
-      gymnast: gymnastObjectId, 
-      apparatus, 
-      tournament, 
-      turno, 
-      institution: institutionId, 
-      judge: judgeObjectId 
-    });
-
     // Determinar si hay datos para guardar (cualquier campo de puntuación con valor)
     // Importante: 0 es un valor válido (puntaje perfecto), solo null/undefined borran.
     const hasScoreData = (deductions !== undefined && deductions !== null) ||
                          (dScore !== undefined && dScore !== null) ||
                          (difficultyBonus !== undefined && difficultyBonus !== null);
 
+    // Definir el filtro de búsqueda (sin turno, que no está en el índice único)
+    const filter = { 
+      gymnast: gymnastObjectId, 
+      apparatus, 
+      tournament, 
+      institution: institutionId, 
+      judge: judgeObjectId 
+    };
+
     // Si no hay datos de puntuación, eliminar el registro existente (si existe)
     if (!hasScoreData) {
-      if (score) {
-        await Score.deleteOne({ _id: score._id });
-        
-        // Emitir evento de WebSocket cuando el puntaje se elimina
-        const io = req.app.get('socketio');
-        io.emit('scoreUpdated', { 
-          _id: score._id,
+      const deletedScore = await Score.findOneAndDelete(filter);
+      
+      if (deletedScore) {
+        // Fetch all scores for this apparatus to emit aggregated data
+        const allApparatusScores = await Score.find({
           gymnast: gymnastObjectId,
+          apparatus: apparatus,
+          tournament: tournament
+        }).populate('gymnast').populate('tournament').populate('judge');
+
+        // Aggregate scores
+        const aggregated = {
+          _id: `${gymnastObjectId}_${apparatus}_${tournament}`,
+          gymnast: allApparatusScores.length > 0 ? (allApparatusScores[0] as any).gymnast : { _id: gymnastObjectId },
           apparatus,
-          tournament,
-          turno: score.turno,
+          tournament: allApparatusScores.length > 0 ? (allApparatusScores[0] as any).tournament : { _id: tournament },
           institution: institutionId,
-          judge: judgeObjectId,
-          deleted: true 
-        });
+          scoringMethod: allApparatusScores.length > 0 ? (allApparatusScores[0] as any).scoringMethod : undefined,
+          level: allApparatusScores.length > 0 ? (allApparatusScores[0] as any).level : undefined,
+          judgeScores: allApparatusScores.map(js => ({
+            judge: js.judge,
+            deductions: js.deductions,
+            startValue: js.startValue,
+            difficultyBonus: js.difficultyBonus,
+            dScore: js.dScore,
+            judgeType: js.judgeType,
+            scoringMethod: js.scoringMethod,
+            _id: (js.judge as any)?._id || js.judge
+          })),
+          completedJudges: allApparatusScores
+            .filter(js => {
+                const hasDeductions = js.deductions !== undefined && js.deductions !== null;
+                if (!hasDeductions) return false;
+                if (js.scoringMethod === 'fig_code') return typeof js.dScore === 'number' && js.dScore > 0;
+                if (js.scoringMethod === 'start_value_bonus') return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
+                return true;
+            })
+            .map(js => String((js.judge as any)?._id || js.judge))
+        };
+
+        const io = req.app.get('socketio');
+        io.emit('scoreUpdated', aggregated);
         
-        return res.status(200).json({ message: 'Score deleted successfully', deleted: true });
+        return res.status(200).json({ message: 'Score deleted successfully', deleted: true, aggregated });
       } else {
-        // No hay nada que eliminar
         return res.status(200).json({ message: 'No score to delete' });
       }
     }
 
     // Preparar datos de puntuación
+    // IMPORTANTE: NO incluimos 'turno' porque no está en el índice único.
+    // Incluirlo causaría errores de duplicate key si el turno difiere del registro existente.
     const scoreData: any = {
       gymnast: gymnastObjectId,
       apparatus,
       tournament,
-      turno,
       institution: institutionId,
       judge: judgeObjectId,
     };
 
     // Agregar campos según lo que se envíe
-    if (deductions !== undefined && deductions !== null) {
+    // IMPORTANTE: Incluir null explícitamente para permitir borrado de campos
+    if (deductions !== undefined) {
       scoreData.deductions = deductions;
     }
-    if (startValue !== undefined && startValue !== null) {
+    if (startValue !== undefined) {
       scoreData.startValue = startValue;
     }
-    if (difficultyBonus !== undefined && difficultyBonus !== null) {
+    if (difficultyBonus !== undefined) {
       scoreData.difficultyBonus = difficultyBonus;
     }
-    if (dScore !== undefined && dScore !== null) {
+    if (dScore !== undefined) {
       scoreData.dScore = dScore;
     }
     if (judgeType) {
@@ -259,24 +339,96 @@ router.post('/', async (req, res) => {
       scoreData.level = level;
     }
 
-    // Actualizar o crear el registro
-    if (score) {
-      // Actualizar campos existentes
-      if (deductions !== undefined) score.deductions = deductions;
-      if (startValue !== undefined) score.startValue = startValue;
-      if (difficultyBonus !== undefined) score.difficultyBonus = difficultyBonus;
-      if (dScore !== undefined) score.dScore = dScore;
-      if (judgeType) score.judgeType = judgeType;
-      await score.save();
-    } else {
-      score = await Score.create(scoreData);
+    // Actualizar o crear el registro ATÓMICAMENTE para evitar colisiones (race conditions)
+    // Usamos findOneAndUpdate con upsert: true.
+    // Reutilizamos el 'filter' definido arriba (mismo que para delete).
+    
+    console.log('[DEBUG_FILTER] Filter for findOneAndUpdate:', JSON.stringify({
+      gymnast: gymnastObjectId.toString(),
+      apparatus,
+      tournament: tournament?.toString(),
+      institution: institutionId?.toString(),
+      judge: judgeObjectId.toString()
+    }));
+    console.log('[DEBUG_SCOREDATA] ScoreData to set:', JSON.stringify(scoreData));
+    
+    // Check what exists in DB
+    const existingScore = await Score.findOne(filter);
+    console.log('[DEBUG_EXISTING] Found existing score:', existingScore ? 'YES' : 'NO');
+    if (existingScore) {
+      console.log('[DEBUG_EXISTING] Existing score data:', JSON.stringify({
+        _id: existingScore._id,
+        gymnast: existingScore.gymnast,
+        apparatus: existingScore.apparatus,
+        tournament: existingScore.tournament,
+        institution: existingScore.institution,
+        judge: existingScore.judge,
+        turno: (existingScore as any).turno
+      }));
     }
+    
+    const updatedScore = await Score.findOneAndUpdate(
+       filter, 
+       { $set: scoreData }, // Seteamos TODO lo que construimos en scoreData.
+       { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
+    );
 
-    // Emitir evento de WebSocket cuando el puntaje se actualiza o crea
+    // NOTA: Como usamos upsert atomicamente, ya no hay duplicados.
+    // if (score) ... await score.save() ... else create ... SE REEMPLAZA POR LO DE ARRIBA.
+
+    // Fetch all scores for this apparatus to emit aggregated data
+    const allApparatusScores = await Score.find({
+      gymnast: gymnastObjectId,
+      apparatus: apparatus,
+      tournament: tournament
+    }).populate('gymnast').populate('tournament').populate('judge');
+
+    // Aggregate scores
+    const aggregated = {
+      _id: `${gymnastObjectId}_${apparatus}_${tournament}`,
+      gymnast: allApparatusScores[0].gymnast,
+      apparatus,
+      tournament: allApparatusScores[0].tournament,
+      institution: institutionId,
+      scoringMethod: allApparatusScores[0].scoringMethod,
+      level: allApparatusScores[0].level,
+      judgeScores: allApparatusScores.map(js => ({
+        judge: js.judge,
+        deductions: js.deductions,
+        startValue: js.startValue,
+        difficultyBonus: js.difficultyBonus,
+        dScore: js.dScore,
+        judgeType: js.judgeType,
+        scoringMethod: js.scoringMethod,
+        _id: (js.judge as any)._id
+      })),
+      completedJudges: allApparatusScores
+        .filter(js => {
+            const hasDeductions = js.deductions !== undefined && js.deductions !== null;
+            if (!hasDeductions) return false;
+            if (js.scoringMethod === 'fig_code') return typeof js.dScore === 'number' && js.dScore > 0;
+            if (js.scoringMethod === 'start_value_bonus') return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
+            return true;
+        })
+        .map(js => String((js.judge as any)._id))
+    };
+
+    // Calculate expectedJudgesCount for the emitted object too
+    const allJudges = await Judge.find({ institution: institutionId }).lean();
+    const expectedJudgesCount = allJudges.filter((j: any) => 
+      j.apparatusAssignments?.some((a: any) => 
+        String(a.tournament) === String(tournament) &&
+        String(a.turno) === String((allApparatusScores[0]?.gymnast as any)?.turno) &&
+        (Array.isArray(a.apparatus) ? a.apparatus.includes(apparatus) : a.apparatus === apparatus)
+      )
+    ).length;
+
+    (aggregated as any).expectedJudgesCount = expectedJudgesCount;
+
     const io = req.app.get('socketio');
-    io.emit('scoreUpdated', score);
+    io.emit('scoreUpdated', aggregated);
 
-    res.status(201).json(score);
+    res.status(201).json(aggregated);
   } catch (error) {
     console.error(error);
     res.status(400).json({ error: 'Error submitting score' });
