@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import Rotation from '../models/Rotation';
 import { authenticateToken } from '../middlewares/authMiddleware';
 import { calculateCategory } from '../utils/categoryCalculator';
+import { logAudit } from '../utils/auditLogger';
+import logger from '../utils/logger';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -12,17 +14,22 @@ router.use(authenticateToken);
 // Get all gymnasts with optional filters
 router.get('/', async (req, res) => {
   try {
-    const { level, group, populateTournament, gender } = req.query;
-  const institutionId = (req as any).user.institutionId;
-  const filters: any = { institution: institutionId };
+    const { level, group, populateTournament, gender, tournamentId } = req.query;
+    const institutionId = (req as any).user.institutionId;
+    const filters: any = { institution: institutionId };
     if (level) filters.level = level;
     if (group) filters.group = group;
     if (gender) filters.gender = gender;
+    
+    // Filter by tournament (check if gymnast has this tournament in their tournaments array)
+    if (tournamentId && mongoose.Types.ObjectId.isValid(tournamentId as string)) {
+      filters['tournaments.tournament'] = new mongoose.Types.ObjectId(tournamentId as string);
+    }
 
     let query = Gymnast.find(filters);
 
     if (populateTournament === 'true') {
-      query = query.populate('tournament');
+      query = query.populate('tournaments.tournament');
     }
 
     const gymnasts = await query;
@@ -38,7 +45,7 @@ router.get('/', async (req, res) => {
 
     res.json(enrichedGymnasts);
   } catch (error) {
-    console.log('ERROR', error);
+    logger.error('Error fetching gymnasts:', error);
     res.status(500).json({ error: 'Error fetching gymnasts' });
   }
 });
@@ -47,12 +54,24 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    // Extraer el campo 'tournament' y otros datos del cuerpo de la solicitud
-    const { _id, tournamentId, ...gymnastData } = req.body;
+    // Extraer datos del cuerpo de la solicitud
+    const { _id, tournamentId, turno, payment, tournaments: tournamentsData, ...gymnastData } = req.body;
 
-    // Convertir 'tournament' a ObjectId si está presente
-    if (tournamentId) {
-      gymnastData.tournament = new mongoose.Types.ObjectId(tournamentId);
+    // Handle tournaments array - either from direct array or legacy single tournament
+    if (tournamentsData && Array.isArray(tournamentsData)) {
+      // New format: tournaments array already provided
+      gymnastData.tournaments = tournamentsData.map((t: any) => ({
+        tournament: new mongoose.Types.ObjectId(t.tournament || t.tournamentId),
+        payment: t.payment || false,
+        turno: t.turno || '',
+      }));
+    } else if (tournamentId) {
+      // Legacy format: single tournamentId - convert to array
+      gymnastData.tournaments = [{
+        tournament: new mongoose.Types.ObjectId(tournamentId),
+        payment: payment || false,
+        turno: turno || '',
+      }];
     }
 
     // Crear una nueva instancia del modelo con los datos del gimnasta
@@ -61,15 +80,15 @@ router.post('/', async (req, res) => {
     await newGymnast.save();
     res.status(201).json(newGymnast);
   } catch (error) {
-    console.log('Error al crear gimnasta:', error);
+    logger.error('Error al crear gimnasta:', error);
     res.status(400).json({ error: 'Error creando gimnasta' });
   }
 });
 
-// Bulk update turno for multiple gymnasts - MUST be before PUT /:id
-router.put('/bulk-update-turno', async (req, res) => {
+// Bulk add/update tournament enrollment for multiple gymnasts - MUST be before PUT /:id
+router.put('/bulk-update-tournaments', async (req, res) => {
   try {
-    const { gymnastIds, tournament, turno } = req.body;
+    const { gymnastIds, tournament, turno, payment } = req.body;
     const institutionId = (req as any).user.institutionId;
 
     // Validation
@@ -79,10 +98,6 @@ router.put('/bulk-update-turno', async (req, res) => {
 
     if (!tournament) {
       return res.status(400).json({ error: 'tournament es requerido' });
-    }
-
-    if (!turno) {
-      return res.status(400).json({ error: 'turno es requerido' });
     }
 
     // Validate tournament ID
@@ -100,19 +115,91 @@ router.put('/bulk-update-turno', async (req, res) => {
     const gymnastObjectIds = gymnastIds.map(id => new mongoose.Types.ObjectId(id));
     const tournamentObjectId = new mongoose.Types.ObjectId(tournament);
 
-    // Perform bulk update - only update gymnasts belonging to the user's institution
-    const result = await Gymnast.updateMany(
-      { 
-        _id: { $in: gymnastObjectIds },
-        institution: institutionId // Security: only update gymnasts from same institution
-      },
-      { 
-        $set: { 
-          tournament: tournamentObjectId,
-          turno: turno
-        } 
+    // For each gymnast, add or update the tournament enrollment
+    let updatedCount = 0;
+    for (const gymnastId of gymnastObjectIds) {
+      const gymnast = await Gymnast.findOne({ _id: gymnastId, institution: institutionId });
+      if (!gymnast) continue;
+
+      // Check if already enrolled in this tournament
+      const existingIndex = (gymnast as any).tournaments?.findIndex(
+        (t: any) => t.tournament?.toString() === tournamentObjectId.toString()
+      ) ?? -1;
+
+      if (existingIndex >= 0) {
+        // Update existing enrollment
+        const updatePath: any = {};
+        if (turno !== undefined) updatePath[`tournaments.${existingIndex}.turno`] = turno;
+        if (payment !== undefined) updatePath[`tournaments.${existingIndex}.payment`] = payment;
+        
+        if (Object.keys(updatePath).length > 0) {
+          await Gymnast.updateOne({ _id: gymnastId }, { $set: updatePath });
+          updatedCount++;
+        }
+      } else {
+        // Add new enrollment
+        await Gymnast.updateOne(
+          { _id: gymnastId },
+          { 
+            $push: { 
+              tournaments: { 
+                tournament: tournamentObjectId, 
+                turno: turno || '', 
+                payment: payment || false 
+              } 
+            } 
+          }
+        );
+        updatedCount++;
       }
-    );
+    }
+
+    res.json({
+      success: true,
+      updatedCount,
+      message: `${updatedCount} gimnasta(s) actualizado(s) correctamente`
+    });
+
+  } catch (error) {
+    logger.error('Error en bulk-update-tournaments:', error);
+    res.status(500).json({ error: 'Error actualizando gimnastas' });
+  }
+});
+
+// Bulk clear tournaments for multiple gymnasts
+router.put('/bulk-clear-tournaments', async (req, res) => {
+  try {
+    const { gymnastIds, tournament } = req.body;
+    const institutionId = (req as any).user.institutionId;
+
+    // Validation
+    if (!gymnastIds || !Array.isArray(gymnastIds) || gymnastIds.length === 0) {
+      return res.status(400).json({ error: 'gymnastIds debe ser un array no vacío' });
+    }
+
+    // Validate all gymnast IDs
+    const invalidIds = gymnastIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ error: `IDs de gimnastas inválidos: ${invalidIds.join(', ')}` });
+    }
+
+    const gymnastObjectIds = gymnastIds.map(id => new mongoose.Types.ObjectId(id));
+
+    let result;
+    if (tournament && mongoose.Types.ObjectId.isValid(tournament)) {
+      // Remove specific tournament from enrollments
+      const tournamentObjectId = new mongoose.Types.ObjectId(tournament);
+      result = await Gymnast.updateMany(
+        { _id: { $in: gymnastObjectIds }, institution: institutionId },
+        { $pull: { tournaments: { tournament: tournamentObjectId } } }
+      );
+    } else {
+      // Clear all tournament enrollments
+      result = await Gymnast.updateMany(
+        { _id: { $in: gymnastObjectIds }, institution: institutionId },
+        { $set: { tournaments: [] } }
+      );
+    }
 
     res.json({
       success: true,
@@ -121,8 +208,8 @@ router.put('/bulk-update-turno', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error en bulk-update-turno:', error);
-    res.status(500).json({ error: 'Error actualizando gimnastas' });
+    logger.error('Error en bulk-clear-tournaments:', error);
+    res.status(500).json({ error: 'Error limpiando torneos' });
   }
 });
 
@@ -138,25 +225,58 @@ router.put('/:id', async (req, res) => {
     }
 
     // Crear un objeto de actualización a partir del cuerpo de la solicitud
-    const updateData = { ...req.body };
+    const { tournamentId, turno, payment, tournaments: tournamentsData, ...updateData } = req.body;
 
-    console.log('updateData.tournament ANTES', updateData.tournamentId)
-
-    // Convertir 'tournament' a ObjectId si está presente en los datos de actualización
-    if (updateData.tournamentId) {
-      updateData.tournament = new mongoose.Types.ObjectId(updateData.tournamentId);
+    // Handle tournaments array - either from direct array or legacy single tournament
+    if (tournamentsData !== undefined) {
+      // New format: tournaments array provided (can be full replacement)
+      if (Array.isArray(tournamentsData)) {
+        updateData.tournaments = tournamentsData.map((t: any) => ({
+          tournament: new mongoose.Types.ObjectId(t.tournament || t.tournamentId),
+          payment: t.payment || false,
+          turno: t.turno || '',
+        }));
+      }
+    } else if (tournamentId) {
+      // Legacy format: single tournamentId - need to add/update in tournaments array
+      const gymnast = await Gymnast.findById(id);
+      if (gymnast) {
+        const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId);
+        const existingTournaments = (gymnast as any).tournaments || [];
+        const existingIndex = existingTournaments.findIndex(
+          (t: any) => t.tournament?.toString() === tournamentObjectId.toString()
+        );
+        
+        if (existingIndex >= 0) {
+          // Update existing
+          existingTournaments[existingIndex] = {
+            ...existingTournaments[existingIndex],
+            turno: turno ?? existingTournaments[existingIndex].turno,
+            payment: payment ?? existingTournaments[existingIndex].payment,
+          };
+        } else {
+          // Add new
+          existingTournaments.push({
+            tournament: tournamentObjectId,
+            payment: payment || false,
+            turno: turno || '',
+          });
+        }
+        updateData.tournaments = existingTournaments;
+      }
     }
 
-    console.log('updateData.tournament DESPUES', updateData.tournament)
+    logger.debug('Updating gymnast:', id, 'with data:', updateData);
 
     // Actualizar el gimnasta con los datos proporcionados
-    const updatedGymnast = await Gymnast.findByIdAndUpdate(id, updateData, { new: true });
+    const updatedGymnast = await Gymnast.findByIdAndUpdate(id, updateData, { new: true })
+      .populate('tournaments.tournament');
     if (!updatedGymnast) {
       return res.status(404).json({ error: 'Gimnasta no encontrado' });
     }
     res.json(updatedGymnast);
   } catch (error) {
-    console.error('Error al actualizar gimnasta:', error);
+    logger.error('Error al actualizar gimnasta:', error);
     res.status(500).json({ error: 'Error actualizando gimnasta' });
   }
 });
@@ -184,49 +304,36 @@ router.get('/by-rotation', async (req, res) => {
       return res.status(400).json({ error: 'group no válido' });
     }
 
+    // Filter by tournaments.tournament array
     const filter: any = { 
-      tournament: tournamentObjectId, 
+      'tournaments.tournament': tournamentObjectId, 
       group: groupNumber,
     };
     
-    // Agregar filtro por turno si se proporciona
+    // Agregar filtro por turno si se proporciona (dentro del array de tournaments)
     if (turno) {
-      filter.turno = turno;
+      filter['tournaments'] = { 
+        $elemMatch: { 
+          tournament: tournamentObjectId, 
+          turno: turno 
+        } 
+      };
     }
 
     // Filtrar por género según aparato
-    const maleApparatuses = ["Suelo", "Arzones", "Anillas", "Salto", "Paralelas", "Barra"];
-    const femaleApparatuses = ["Salto", "Paralelas", "Viga", "Suelo"];
+    const maleOnlyApparatuses = ["Anillas", "Arzones", "Barra", "Paralelas"];
+    const femaleOnlyApparatuses = ["Viga", "Barras Asimétricas"];
     
-    // CASOS ESPECIALES: Suelo y Salto y Paralelas (nombres compartidos o similares)
-    // Para simplificar, asumiremos que si el cliente manda el aparato, el backend filtra
-    // PERO: "Suelo" y "Salto" son mixtos (nombre igual).
-    // "Paralelas" en Femenina es Asimétricas, en Masculina es Paralelas.
-    // Si la app usa strings distintos, perfecto. Si usa el mismo string, tenemos ambigüedad.
-    // Viendo constants.ts del frontend:
-    // GAF: ["Salto", "Paralelas", "Viga", "Suelo"]
-    // GAM: ["Suelo", "Arzones", "Anillas", "Salto", "Paralelas", "Barra"]
-    // Hay colisión en: Suelo, Salto, Paralelas.
-    
-    // ESTRATEGIA:
-    // 1. Anillas, Arzones, Barra -> Solo Masculino (M)
-    // 2. Viga -> Solo Femenino (F)
-    // 3. Colisiones (Suelo, Salto, Paralelas): No podemos filtrar solo por nombre de aparato.
-    //    Necesitamos que el frontend envíe el género O deducirlo de otra forma.
-    //    Sin embargo, el requerimiento específico del usuario fue "en anillas no se deben ver mujeres".
-    //    Anillas es exclusivo de GAM.
-    
-    if (["Anillas", "Arzones", "Barra"].includes(apparatus as string)) {
+    if (maleOnlyApparatuses.includes(apparatus as string)) {
         filter.gender = 'M';
-    } else if (["Viga"].includes(apparatus as string)) {
+    } else if (femaleOnlyApparatuses.includes(apparatus as string)) {
         filter.gender = 'F';
     }
-    // Para los aparatos compartidos, no filtramos por género automáticamente a menos que cambie la lógica de nombres.
 
     // Buscar gimnastas por torneo, grupo y turno (si se proporciona)
     const gymnasts = await Gymnast.find(filter)
-      .populate('tournament') // Popula el torneo
-      .lean(); // Convierte los documentos a objetos JavaScript planos
+      .populate('tournaments.tournament')
+      .lean();
 
     // Obtener las rotaciones para el aparato y los gimnastas encontrados
     const gymnastIds = gymnasts.map(gymnast => gymnast._id);
@@ -241,16 +348,24 @@ router.get('/by-rotation', async (req, res) => {
       const rotation = rotations.find(rot => rot.gymnast.toString() === gymnast._id.toString());
       const category = calculateCategory(gymnast.birthDate as unknown as Date, gymnast.gender as 'F' | 'M');
       
+      // Find turno for this specific tournament
+      const enrollment = (gymnast as any).tournaments?.find(
+        (t: any) => t.tournament?._id?.toString() === tournamentObjectId.toString() || 
+                    t.tournament?.toString() === tournamentObjectId.toString()
+      );
+      
       return {
         ...gymnast,
-        category, // Agregar categoría calculada
-        rotation: rotation || null, // Si no tiene rotación, se asigna null
+        category,
+        turno: enrollment?.turno || '', // Add turno from enrollment
+        payment: enrollment?.payment || false, // Add payment from enrollment
+        rotation: rotation || null,
       };
     });
 
     res.json(results);
   } catch (error) {
-    console.error('Error en el endpoint /by-rotation:', error);
+    logger.error('Error en el endpoint /by-rotation:', error);
     res.status(500).json({ error: 'Error obteniendo los gimnastas y sus rotaciones' });
   }
 });
@@ -263,8 +378,17 @@ router.get('/groups', async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(tournamentId as string)) return res.status(400).json({ error: 'tournamentId inválido' });
 
     const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string);
-    const filter: any = { tournament: tournamentObjectId };
-    if (turno) filter.turno = turno;
+    
+    // Filter by tournaments array
+    const filter: any = { 'tournaments.tournament': tournamentObjectId };
+    if (turno) {
+      filter['tournaments'] = { 
+        $elemMatch: { 
+          tournament: tournamentObjectId, 
+          turno: turno 
+        } 
+      };
+    }
 
     const groups = await Gymnast.distinct('group', filter);
     // Filtrar y ordenar números válidos
@@ -275,7 +399,7 @@ router.get('/groups', async (req, res) => {
 
     res.json({ groups: numericGroups });
   } catch (error) {
-    console.error('Error en /gymnasts/groups:', error);
+    logger.error('Error en /gymnasts/groups:', error);
     res.status(500).json({ error: 'Error obteniendo grupos' });
   }
 });
@@ -286,7 +410,31 @@ router.get('/groups', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const user = (req as any).user;
+    const institutionId = user.institutionId;
+    
+    // Verificar que el gimnasta pertenece a la institución del usuario
+    const gymnast = await Gymnast.findById(id);
+    if (!gymnast) {
+      return res.status(404).json({ error: 'Gimnasta no encontrado' });
+    }
+    if (gymnast.institution?.toString() !== institutionId?.toString()) {
+      return res.status(403).json({ error: 'No tiene permiso para eliminar este gimnasta' });
+    }
+    
     await Gymnast.findByIdAndDelete(id);
+    
+    // Audit log
+    await logAudit({
+      action: 'DELETE',
+      entityType: 'gymnast',
+      entityId: id,
+      performedBy: user._id,
+      performedByRole: user.role,
+      institution: institutionId,
+      details: { gymnastName: gymnast.name },
+    });
+    
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: 'Error deleting gymnast' });

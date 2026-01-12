@@ -2,6 +2,7 @@ import express from 'express';
 import Admin from '../models/Admin';
 import bcrypt from 'bcryptjs';
 import { authenticateToken } from '../middlewares/authMiddleware';
+import { logAudit } from '../utils/auditLogger';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -51,8 +52,40 @@ router.post('/', async (req, res) => {
 // Delete an admin
 router.delete('/:id', async (req, res) => {
   try {
+    const user = (req as any).user;
     const { id } = req.params;
+    
+    // Verificar permisos
+    const adminToDelete = await Admin.findById(id);
+    if (!adminToDelete) {
+      return res.status(404).json({ error: 'Admin no encontrado' });
+    }
+    
+    // Solo super-admin puede eliminar cualquier admin
+    // Un admin normal solo puede eliminar admins de su propia institución
+    if (user.role !== 'super-admin') {
+      if (adminToDelete.institution?.toString() !== user.institutionId?.toString()) {
+        return res.status(403).json({ error: 'No tiene permiso para eliminar este admin' });
+      }
+      // No permitir eliminar super-admins
+      if (adminToDelete.role === 'super-admin') {
+        return res.status(403).json({ error: 'No puede eliminar un super-admin' });
+      }
+    }
+    
     await Admin.findByIdAndDelete(id);
+    
+    // Audit log
+    await logAudit({
+      action: 'DELETE',
+      entityType: 'admin',
+      entityId: id,
+      performedBy: user._id,
+      performedByRole: user.role,
+      institution: user.institutionId,
+      details: { adminUsername: adminToDelete.username },
+    });
+    
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: 'Error deleting admin' });

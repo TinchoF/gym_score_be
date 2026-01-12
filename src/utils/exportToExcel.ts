@@ -2,19 +2,36 @@ import * as XLSX from 'xlsx';
 
 export const exportGymnastToExcel = (data: any[], filename: string) => {
   // Transformar los datos para incluir encabezados en castellano y modificar campos
-  const transformedData = data.map(gymnast => ({
-    Nombre: gymnast.name,
-    Género: gymnast.gender,
-    'Fecha de Nacimiento': new Date(gymnast.birthDate).toLocaleDateString('es-ES'),
-    Nivel: gymnast.level,
-    Categoría: gymnast.category,
-    Grupo: gymnast.group || '',
-    Torneo: gymnast.tournament?.name || '',
-    'Turno': gymnast.turno || '',
-    Pago: gymnast.payment ? 'Sí' : 'No',
-    Entrenador: gymnast.coach || '',
-    Institución: gymnast.institution || '',
-  }));
+  const transformedData = data.map(gymnast => {
+    // Get tournament names from tournaments array
+    const tournamentNames = (gymnast.tournaments || [])
+      .map((t: any) => t.tournament?.name || '')
+      .filter((n: string) => n)
+      .join(', ');
+    
+    // Get turno from first tournament (for backwards compat) or show all
+    const turnos = (gymnast.tournaments || [])
+      .map((t: any) => t.turno || '')
+      .filter((t: string) => t)
+      .join(', ');
+    
+    // Check if any tournament is paid
+    const anyPaid = (gymnast.tournaments || []).some((t: any) => t.payment);
+    
+    return {
+      Nombre: gymnast.name,
+      Género: gymnast.gender,
+      'Fecha de Nacimiento': new Date(gymnast.birthDate).toLocaleDateString('es-ES'),
+      Nivel: gymnast.level,
+      Categoría: gymnast.category,
+      Grupo: gymnast.group || '',
+      'Inscripto a': tournamentNames,
+      'Turno': turnos,
+      Pago: anyPaid ? 'Sí' : 'No',
+      Entrenador: gymnast.coach || '',
+      Institución: gymnast.institution || '',
+    };
+  });
 
   // Crear la hoja de cálculo con los datos transformados
   const worksheet = XLSX.utils.json_to_sheet(transformedData);

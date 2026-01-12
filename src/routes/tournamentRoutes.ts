@@ -35,7 +35,18 @@ router.post('/', async (req, res) => {
 // Actualizar un torneo
 router.put('/:id', async (req, res) => {
   try {
+    const institutionId = (req as any).user.institutionId;
     const { name, groupCount, baseScore, turnos, turnoConfig } = req.body;
+    
+    // Verificar que el torneo pertenece a la institución del usuario
+    const existingTournament = await Tournament.findById(req.params.id);
+    if (!existingTournament) {
+      return res.status(404).json({ message: 'Tournament not found' });
+    }
+    if (existingTournament.institution?.toString() !== institutionId?.toString()) {
+      return res.status(403).json({ message: 'No tiene permiso para modificar este torneo' });
+    }
+    
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (groupCount !== undefined) updateData.groupCount = groupCount;
@@ -48,9 +59,6 @@ router.put('/:id', async (req, res) => {
       updateData,
       { new: true }
     );
-    if (!tournament) {
-      return res.status(404).json({ message: 'Tournament not found' });
-    }
     res.json(tournament);
   } catch (error) {
     console.error('Error updating tournament:', error);
@@ -61,13 +69,21 @@ router.put('/:id', async (req, res) => {
 // Eliminar un torneo y actualizar gimnastas
 router.delete('/:id', async (req, res) => {
   try {
-    const tournament = await Tournament.findByIdAndDelete(req.params.id);
-    if (!tournament) {
+    const institutionId = (req as any).user.institutionId;
+    
+    // Verificar que el torneo pertenece a la institución del usuario
+    const existingTournament = await Tournament.findById(req.params.id);
+    if (!existingTournament) {
       return res.status(404).json({ message: 'Tournament not found' });
     }
+    if (existingTournament.institution?.toString() !== institutionId?.toString()) {
+      return res.status(403).json({ message: 'No tiene permiso para eliminar este torneo' });
+    }
+    
+    await Tournament.findByIdAndDelete(req.params.id);
     // Establecer el campo tournament en null para los gimnastas que tenían este torneo
     await Gymnast.updateMany(
-      { tournament: tournament._id },
+      { tournament: existingTournament._id },
       { $set: { tournament: null } }
     );
     res.json({ message: 'Tournament deleted and gymnasts updated' });

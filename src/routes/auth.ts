@@ -1,19 +1,26 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import Admin from '../models/Admin';  // Asegúrate de que la ruta sea correcta
-import Judge from '../models/Judge';  // Asegúrate de que la ruta sea correcta
+import rateLimit from 'express-rate-limit';
+import Admin from '../models/Admin';
+import Judge from '../models/Judge';
+import Institution from '../models/Institution';
 import { getJudgesList } from './authController';
 
 
 const router = express.Router();
 
+// Rate limiter para prevenir ataques de fuerza bruta
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // máximo 5 intentos por ventana por IP
+  message: { error: 'Demasiados intentos de login. Por favor espere 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Ruta para login
-router.post('/login', async (req, res) => {
-  console.log('Log in')
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password, role } = req.body;  // role puede ser 'admin' o 'judge'
-  console.log('req.body', req.body)
-  const all = await Admin.find();
-  console.log('all users from DB', all)
   try {
     let user;
     if (role === 'admin' || role === 'super-admin') {
@@ -28,16 +35,25 @@ router.post('/login', async (req, res) => {
       // Buscar en los jueces
       user = await Judge.findOne({ name: username });
 
-      // Verificar si el juez existe
-      if (!user || user.password !== password) {
+      // Verificar si el juez existe y la contraseña es correcta
+      if (!user || !user.comparePassword(password)) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
     } else {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    // Si todo es correcto, generar el token incluyendo institutionId
     const institutionId = user.institution;
+
+    // Verificar que la institución esté activa (solo para admin y judge, no super-admin)
+    if (role !== 'super-admin' && institutionId) {
+      const institution = await Institution.findById(institutionId);
+      if (!institution || !institution.isActive) {
+        return res.status(403).json({ error: 'Institución desactivada. Contacte al administrador.' });
+      }
+    }
+
+    // Si todo es correcto, generar el token incluyendo institutionId
     const token = jwt.sign({ id: user._id, role, institutionId }, process.env.JWT_SECRET || '', {
       expiresIn: '24h',
     });

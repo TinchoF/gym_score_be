@@ -11,13 +11,10 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const institutionId = (req as any).user.institutionId;
-    const judges = await Judge.find({ institution: institutionId }).lean();
-    
-    console.log('Fetching judges for institution:', institutionId);
-    console.log('Number of judges found:', judges.length);
-    if (judges.length > 0) {
-      console.log('First judge:', JSON.stringify(judges[0], null, 2));
-    }
+    // Exclude password from response
+    const judges = await Judge.find({ institution: institutionId })
+      .select('-password -passwordHashed')
+      .lean();
     
     // Ensure apparatusAssignments field exists for all judges
     const judgesWithAssignments = judges.map(judge => ({
@@ -50,31 +47,32 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const updatedData = req.body;
 
-    console.log('Updating judge:', id);
-    console.log('Updated data:', JSON.stringify(updatedData, null, 2));
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'ID no válido' });
     }
 
-    // Usar findByIdAndUpdate con runValidators y returnDocument para asegurar que se aplique el schema
-    const updatedJudge = await Judge.findByIdAndUpdate(
-      id, 
-      { $set: updatedData },
-      { 
-        new: true,
-        runValidators: true,
-        strict: false  // Permitir actualización de campos que no estaban en el documento original
-      }
-    );
-
-    console.log('Judge after update:', JSON.stringify(updatedJudge, null, 2));
-
-    if (!updatedJudge) {
+    const judge = await Judge.findById(id);
+    if (!judge) {
       return res.status(404).json({ error: 'Juez no encontrado' });
     }
 
-    res.json(updatedJudge);
+    // Update fields (password if provided will trigger pre-save hook for hashing)
+    Object.keys(updatedData).forEach(key => {
+      if (key === 'password' && updatedData[key]) {
+        // Reset passwordHashed so pre-save hook will hash the new password
+        judge.passwordHashed = false;
+      }
+      (judge as any)[key] = updatedData[key];
+    });
+
+    await judge.save();
+    
+    // Return judge without password
+    const responseJudge = judge.toObject();
+    delete responseJudge.password;
+    delete responseJudge.passwordHashed;
+
+    res.json(responseJudge);
   } catch (error) {
     console.error('Error al actualizar juez:', error);
     res.status(500).json({ error: 'Error actualizando juez' });
@@ -103,7 +101,6 @@ router.get('/by-tournament-turno', async (req, res) => {
       return {
         _id: judge._id,
         name: judge.name,
-        password: judge.password,
         apparatus: assignment ? assignment.apparatus : [],
         institution: judge.institution,
       };

@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import Gymnast from '../models/Gymnast';
 import { authenticateToken } from '../middlewares/authMiddleware';
 import { calculateFinalDeductions, calculateFinalScore } from '../utils/scoreCalculator';
+import logger from '../utils/logger';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -17,8 +18,8 @@ router.get('/', async (req, res) => {
   const institutionId = (req as any).user.institutionId;
   const filter: any = { institution: institutionId };
 
-    console.log('[DEBUG] GET /api/scores - institutionId:', institutionId);
-    console.log('[DEBUG] Query params:', { apparatus, group, tournament });
+    logger.debug('GET /api/scores - institutionId:', institutionId);
+    logger.debug('Query params:', { apparatus, group, tournament });
 
     if (apparatus) {
       filter.apparatus = apparatus;
@@ -83,7 +84,7 @@ router.get('/', async (req, res) => {
     // Ejecutar el pipeline de agregación para recuperar todas las puntuaciones por juez
     const rawScores = await Score.aggregate(pipeline);
 
-    console.log('[DEBUG] Raw scores found:', rawScores.length);
+    logger.debug('Raw scores found:', rawScores.length);
     
     // Agrupar por gimnasta + aparato + tournament y calcular el puntaje final
     const grouped: Record<string, any> = {};
@@ -114,7 +115,7 @@ router.get('/', async (req, res) => {
       });
     });
 
-    console.log('[DEBUG] Grouped scores:', Object.keys(grouped).length);
+    logger.debug('Grouped scores:', Object.keys(grouped).length);
 
     // Fetch all judges once to calculate expectedJudgesCount
     const allJudges = await Judge.find({ institution: institutionId }).lean();
@@ -180,10 +181,10 @@ router.get('/', async (req, res) => {
       return baseResult;
     });
 
-    console.log('[DEBUG] Results to send:', results.length);
+    logger.debug('Results to send:', results.length);
     res.json(results);
   } catch (error) {
-    console.error('Error al obtener las puntuaciones:', error);
+    logger.error('Error al obtener las puntuaciones:', error);
     res.status(500).json({ error: 'Error al obtener los resultados' });
   }
 });
@@ -210,7 +211,7 @@ router.post('/', async (req, res) => {
       level,
     } = req.body;
 
-    console.log('[DEBUG_POST] Payload:', JSON.stringify(req.body));
+    logger.debug('POST /api/scores Payload:', req.body);
 
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
@@ -224,8 +225,11 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Gymnast not found' });
     }
 
-    // Obtener el turno del gimnasta
-    const turno = gymnast.turno;
+    // Obtener el turno del gimnasta para este torneo específico
+    const enrollment = (gymnast as any).tournaments?.find(
+      (t: any) => t.tournament?.toString() === tournament?.toString()
+    );
+    const turno = enrollment?.turno || '';
 
     const institutionId = (req as any).user.institutionId;
 
@@ -343,20 +347,20 @@ router.post('/', async (req, res) => {
     // Usamos findOneAndUpdate con upsert: true.
     // Reutilizamos el 'filter' definido arriba (mismo que para delete).
     
-    console.log('[DEBUG_FILTER] Filter for findOneAndUpdate:', JSON.stringify({
+    logger.debug('Filter for findOneAndUpdate:', {
       gymnast: gymnastObjectId.toString(),
       apparatus,
       tournament: tournament?.toString(),
       institution: institutionId?.toString(),
       judge: judgeObjectId.toString()
-    }));
-    console.log('[DEBUG_SCOREDATA] ScoreData to set:', JSON.stringify(scoreData));
+    });
+    logger.debug('ScoreData to set:', scoreData);
     
     // Check what exists in DB
     const existingScore = await Score.findOne(filter);
-    console.log('[DEBUG_EXISTING] Found existing score:', existingScore ? 'YES' : 'NO');
+    logger.debug('Found existing score:', existingScore ? 'YES' : 'NO');
     if (existingScore) {
-      console.log('[DEBUG_EXISTING] Existing score data:', JSON.stringify({
+      logger.debug('Existing score data:', {
         _id: existingScore._id,
         gymnast: existingScore.gymnast,
         apparatus: existingScore.apparatus,
@@ -364,7 +368,7 @@ router.post('/', async (req, res) => {
         institution: existingScore.institution,
         judge: existingScore.judge,
         turno: (existingScore as any).turno
-      }));
+      });
     }
     
     const updatedScore = await Score.findOneAndUpdate(
@@ -466,7 +470,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(aggregated);
   } catch (error) {
-    console.error(error);
+    logger.error('Error submitting score:', error);
     res.status(400).json({ error: 'Error submitting score' });
   }
 });

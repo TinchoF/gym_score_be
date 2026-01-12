@@ -17,6 +17,8 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import tournamentRoutes from './routes/tournamentRoutes';
 import institutionRoutes from './routes/institution';
+import logger from './utils/logger';
+import errorHandler from './middleware/errorHandler';
 
 dotenv.config();
 
@@ -26,6 +28,7 @@ const server = http.createServer(app);
 // Lista de orígenes permitidos
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://192.168.100.227:3000',
   'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
 ];
 
@@ -74,22 +77,21 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);  // Esto se ejecuta cuando un cliente se conecta
+  logger.debug('New client connected:', socket.id);
 
   // Escuchar el evento de actualización de puntaje
   socket.on('scoreUpdated', (updatedScore) => {
-    console.log('Puntaje actualizado recibido:', updatedScore);  // Aquí verificas el puntaje recibido
+    logger.debug('Puntaje actualizado recibido:', updatedScore);
 
     // Emitir el evento para todos los clientes conectados
     io.emit('scoreUpdated', updatedScore);
 
-    // Verificar si se está emitiendo correctamente
-    console.log('Emitiendo el evento scoreUpdated:', updatedScore);
+    logger.debug('Emitiendo el evento scoreUpdated:', updatedScore);
   });
 
   // Otras acciones cuando el cliente se desconecta, etc.
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    logger.debug('Client disconnected:', socket.id);
   });
 });
 
@@ -138,17 +140,20 @@ app.use('/api/config', configRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/rotations', rotationRoutes);
 
+// Global error handler - must be last
+app.use(errorHandler);
+
 mongoose.connect(process.env.MONGO_URI, {
   serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
 })
   .then(() => {
-    console.log('Connected to MongoDB');
+    logger.info('Connected to MongoDB');
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      logger.info(`Server running on port ${PORT}`);
     });
   })
   .catch((error) => {
-    console.error('MongoDB connection error:', error);
+    logger.error('MongoDB connection error:', error);
     process.exit(1);
   });
 
