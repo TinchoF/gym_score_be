@@ -3,6 +3,8 @@ import Judge from '../models/Judge';
 import mongoose from 'mongoose';
 import { getJudgesList } from './authController';
 import { authenticateToken } from '../middlewares/authMiddleware';
+import { validate } from '../middlewares/errorHandler';
+import { createJudgeSchema, updateJudgeSchema } from '../schemas/judge.schema';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -30,7 +32,7 @@ router.get('/', async (req, res) => {
 
 
 // Create a judge
-router.post('/', async (req, res) => {
+router.post('/', validate(createJudgeSchema), async (req, res) => {
   try {
     const institutionId = (req as any).user.institutionId;
     const newJudge = new Judge({ ...req.body, institution: institutionId });
@@ -42,7 +44,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update a judge by ID
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(updateJudgeSchema), async (req, res) => {
   try {
     const { id } = req.params;
     const updatedData = req.body;

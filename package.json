@@ -12,6 +12,8 @@
           "start": "node dist/index.js",
           "prod": "NODE_ENV=production node dist/index.js",
           "lint": "eslint . --ext .ts",
+          "lint:fix": "eslint . --ext .ts --fix",
+          "format": "prettier --write \"src/**/*.{ts,js,json}\"",
           "test": "jest",
           "test:watch": "jest --watch",
           "predeploy": "npm run build",
