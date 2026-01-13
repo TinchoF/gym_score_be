@@ -6,6 +6,8 @@ import Gymnast from '../models/Gymnast';
 import { authenticateToken } from '../middlewares/authMiddleware';
 import { calculateFinalDeductions, calculateFinalScore } from '../utils/scoreCalculator';
 import logger from '../utils/logger';
+import { validate } from '../middlewares/errorHandler';
+import { submitScoreSchema } from '../schemas/score.schema';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -193,8 +195,8 @@ router.get('/', async (req, res) => {
 
 
 
-// Submit scores
-router.post('/', async (req, res) => {
+// Submit scores with validation
+router.post('/', validate(submitScoreSchema), async (req, res) => {
   try {
     const { 
       gymnastId, 

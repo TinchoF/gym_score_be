@@ -18,19 +18,33 @@ import jwt from 'jsonwebtoken';
 import tournamentRoutes from './routes/tournamentRoutes';
 import institutionRoutes from './routes/institution';
 import logger from './utils/logger';
-import errorHandler from './middleware/errorHandler';
+import errorHandler from './middlewares/errorHandler';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
+
+// Validate critical environment variables
+if (!process.env.JWT_SECRET) {
+  console.error('CRITICAL ERROR: JWT_SECRET is not defined in environment variables');
+  process.exit(1);
+}
+
+if (!process.env.MONGO_URI) {
+  console.error('CRITICAL ERROR: MONGO_URI is not defined in environment variables');
+  process.exit(1);
+}
 
 const app = express();
 const server = http.createServer(app);
 
-// Lista de orígenes permitidos
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://192.168.100.227:3000',
-  'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
-];
+// Lista de orígenes permitidos desde variables de entorno
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'http://localhost:3000',
+      'http://192.168.100.227:3000',
+      'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
+    ];
 
 const io = new Server(server, {
   cors: {
@@ -56,6 +70,15 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 5000;
 app.set('socketio', io);
 
+// Rate limiting for authentication routes
+const authLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes default
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // 100 requests per window
+  message: 'Demasiados intentos de autenticación, por favor intente más tarde',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware para verificar el token de autenticación
 io.use((socket, next) => {
   const token = socket.handshake.query.token as string;
@@ -64,8 +87,8 @@ io.use((socket, next) => {
     return next(new Error('Authentication error: No token provided.'));
   }
 
-  // Verificar el token JWT (ajusta la clave secreta según corresponda)
-  jwt.verify(token, process.env.JWT_SECRET as string, (err, decoded) => {
+  // Verificar el token JWT
+  jwt.verify(token, process.env.JWT_SECRET!, (err, decoded) => {
     if (err) {
       return next(new Error('Authentication error: Invalid token.'));
     }
@@ -79,14 +102,32 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   logger.debug('New client connected:', socket.id);
 
+  // Join tournament room for targeted broadcasting
+  socket.on('joinTournament', (tournamentId: string) => {
+    socket.join(`tournament_${tournamentId}`);
+    logger.debug(`Socket ${socket.id} joined tournament_${tournamentId}`);
+  });
+
+  // Leave tournament room
+  socket.on('leaveTournament', (tournamentId: string) => {
+    socket.leave(`tournament_${tournamentId}`);
+    logger.debug(`Socket ${socket.id} left tournament_${tournamentId}`);
+  });
+
   // Escuchar el evento de actualización de puntaje
   socket.on('scoreUpdated', (updatedScore) => {
     logger.debug('Puntaje actualizado recibido:', updatedScore);
 
-    // Emitir el evento para todos los clientes conectados
-    io.emit('scoreUpdated', updatedScore);
-
-    logger.debug('Emitiendo el evento scoreUpdated:', updatedScore);
+    // Emitir solo a clientes en el room del torneo específico
+    const tournamentId = updatedScore.tournament?._id || updatedScore.tournament;
+    if (tournamentId) {
+      io.to(`tournament_${tournamentId}`).emit('scoreUpdated', updatedScore);
+      logger.debug(`Emitiendo scoreUpdated a tournament_${tournamentId}`);
+    } else {
+      // Fallback: broadcast a todos si no hay tournamentId
+      io.emit('scoreUpdated', updatedScore);
+      logger.debug('Emitiendo scoreUpdated a todos (no tournamentId)');
+    }
   });
 
   // Otras acciones cuando el cliente se desconecta, etc.
@@ -95,11 +136,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Verifica que MONGO_URI esté definido
-if (!process.env.MONGO_URI) {
-  console.error('MONGO_URI is not defined in the environment variables');
-  process.exit(1); // Termina el proceso con un error si no está definido
-}
+
 
 // Configuración de CORS para Express
 app.use(cors({
@@ -125,7 +162,7 @@ app.use(cors({
 app.use(express.json());
 
 // Public Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/public-judges', publicJudgesRouter);
 app.use('/api/institution', institutionRoutes);
 

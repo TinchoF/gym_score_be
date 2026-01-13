@@ -7,6 +7,8 @@ import { authenticateToken } from '../middlewares/authMiddleware';
 import { calculateCategory } from '../utils/categoryCalculator';
 import { logAudit } from '../utils/auditLogger';
 import logger from '../utils/logger';
+import { validate } from '../middlewares/errorHandler';
+import { createGymnastSchema, updateGymnastSchema, bulkUpdateTournamentsSchema, bulkClearTournamentsSchema } from '../schemas/gymnast.schema';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -52,7 +54,8 @@ router.get('/', async (req, res) => {
 
 
 
-router.post('/', async (req, res) => {
+// Create new gymnast with validation
+router.post('/', validate(createGymnastSchema), async (req, res) => {
   try {
     // Extraer datos del cuerpo de la solicitud
     const { _id, tournamentId, turno, payment, tournaments: tournamentsData, ...gymnastData } = req.body;
@@ -86,7 +89,7 @@ router.post('/', async (req, res) => {
 });
 
 // Bulk add/update tournament enrollment for multiple gymnasts - MUST be before PUT /:id
-router.put('/bulk-update-tournaments', async (req, res) => {
+router.put('/bulk-update-tournaments', validate(bulkUpdateTournamentsSchema), async (req, res) => {
   try {
     const { gymnastIds, tournament, turno, payment } = req.body;
     const institutionId = (req as any).user.institutionId;
@@ -167,7 +170,7 @@ router.put('/bulk-update-tournaments', async (req, res) => {
 });
 
 // Bulk clear tournaments for multiple gymnasts
-router.put('/bulk-clear-tournaments', async (req, res) => {
+router.put('/bulk-clear-tournaments', validate(bulkClearTournamentsSchema), async (req, res) => {
   try {
     const { gymnastIds, tournament } = req.body;
     const institutionId = (req as any).user.institutionId;
@@ -215,7 +218,7 @@ router.put('/bulk-clear-tournaments', async (req, res) => {
 
 
 // Update a gymnast
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
   try {
     const { id } = req.params;
 

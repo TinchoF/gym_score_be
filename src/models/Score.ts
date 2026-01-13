@@ -4,7 +4,7 @@ const ScoreSchema = new mongoose.Schema({
   gymnast: { type: mongoose.Schema.Types.ObjectId, ref: 'Gymnast', required: true },
   apparatus: { type: String, required: true },
   tournament: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', required: false },
-  turno: { type: String, required: false },
+  turno: { type: String, required: false }, // Added to match index definition
   judge: { type: mongoose.Schema.Types.ObjectId, ref: 'Judge', required: true },
   institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: true },
   
