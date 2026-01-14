@@ -17,11 +17,8 @@ router.get('/', async (req, res) => {
     const { apparatus, group, tournament } = req.query;
 
   // Construir el objeto de filtro basado en los parámetros de consulta
-  const institutionId = (req as any).user.institutionId;
+    const institutionId = (req as any).user.institutionId;
   const filter: any = { institution: institutionId };
-
-    logger.debug('GET /api/scores - institutionId:', institutionId);
-    logger.debug('Query params:', { apparatus, group, tournament });
 
     if (apparatus) {
       filter.apparatus = apparatus;
@@ -36,29 +33,43 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Prepare filter for aggregation (Ensure ObjectIds are cast correctly)
+    // Mongoose 'find' auto-casts, but 'aggregate' match requires precise types.
+    const aggregateFilter = {
+        ...filter,
+        institution: new mongoose.Types.ObjectId(filter.institution),
+        // Ensure apparatus is present if set
+        ...(filter.apparatus ? { apparatus: filter.apparatus } : {}),
+        // Cast tournament if present
+        ...(filter.tournament ? { tournament: new mongoose.Types.ObjectId(filter.tournament) } : {})
+    };
+
     // Construir el pipeline de agregación
-    const pipeline = [
-      { $match: filter },
+    const pipeline: any[] = [
+      { $match: aggregateFilter },
       {
         $lookup: {
-          from: 'gymnasts', // Asegúrate de que coincide con el nombre real de tu colección
+          from: 'gymnasts',
           localField: 'gymnast',
           foreignField: '_id',
           as: 'gymnast',
         },
       },
-      { $unwind: '$gymnast' },
+      { $unwind: { path: '$gymnast', preserveNullAndEmptyArrays: true } },
     ];
 
     if (group) {
-      const groupNumber = Number(group);
-      if (!isNaN(groupNumber)) {
-        pipeline.push({
-          $match: { 'gymnast.group': groupNumber },
-        });
-      } else {
-        return res.status(400).json({ error: 'Parámetro de grupo inválido' });
-      }
+        const groupNumber = Number(group);
+        if (!isNaN(groupNumber)) {
+            pipeline.push({
+                $match: { 
+                    $or: [
+                        { 'gymnast.group': groupNumber },
+                        { 'gymnast.group': String(groupNumber) }
+                    ]
+                },
+            });
+        }
     }
 
     // Opcionalmente, popular detalles del torneo
@@ -70,9 +81,8 @@ router.get('/', async (req, res) => {
         as: 'tournament',
       },
     });
-    pipeline.push({ $unwind: '$tournament' });
-
-    // Opcionalmente, popular detalles del juez
+    pipeline.push({ $unwind: { path: '$tournament', preserveNullAndEmptyArrays: true } });
+    
     pipeline.push({
       $lookup: {
         from: 'judges',
@@ -81,17 +91,17 @@ router.get('/', async (req, res) => {
         as: 'judge',
       },
     });
-    pipeline.push({ $unwind: '$judge' });
+    pipeline.push({ $unwind: { path: '$judge', preserveNullAndEmptyArrays: true } });
 
     // Ejecutar el pipeline de agregación para recuperar todas las puntuaciones por juez
     const rawScores = await Score.aggregate(pipeline);
-
-    logger.debug('Raw scores found:', rawScores.length);
     
     // Agrupar por gimnasta + aparato + tournament y calcular el puntaje final
     const grouped: Record<string, any> = {};
     rawScores.forEach((s: any) => {
-      const key = `${s.gymnast._id}_${s.apparatus}_${s.tournament._id}`;
+      // Use optional chaining for tournament because it might be null now
+      const tournamentId = s.tournament?._id || 'unknown';
+      const key = `${s.gymnast._id}_${s.apparatus}_${tournamentId}`;
       if (!grouped[key]) {
         grouped[key] = {
           _id: key, // Unique ID for the group (gymnast_apparatus)
@@ -117,7 +127,8 @@ router.get('/', async (req, res) => {
       });
     });
 
-    logger.debug('Grouped scores:', Object.keys(grouped).length);
+
+
 
     // Fetch all judges once to calculate expectedJudgesCount
     const allJudges = await Judge.find({ institution: institutionId }).lean();
@@ -183,7 +194,6 @@ router.get('/', async (req, res) => {
       return baseResult;
     });
 
-    logger.debug('Results to send:', results.length);
     res.json(results);
   } catch (error) {
     logger.error('Error al obtener las puntuaciones:', error);
@@ -213,7 +223,7 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
       level,
     } = req.body;
 
-    logger.debug('POST /api/scores Payload:', req.body);
+
 
     if (!mongoose.Types.ObjectId.isValid(gymnastId)) {
       return res.status(400).json({ error: 'ID no válido' });
@@ -228,10 +238,10 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
     }
 
     // Obtener el turno del gimnasta para este torneo específico
-    const enrollment = (gymnast as any).tournaments?.find(
-      (t: any) => t.tournament?.toString() === tournament?.toString()
-    );
-    const turno = enrollment?.turno || '';
+    // const enrollment = (gymnast as any).tournaments?.find(
+    //   (t: any) => t.tournament?.toString() === tournament?.toString()
+    // );
+    // const turno = enrollment?.turno || '';
 
     const institutionId = (req as any).user.institutionId;
 
@@ -250,7 +260,7 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
                          (dScore !== undefined && dScore !== null) ||
                          (difficultyBonus !== undefined && difficultyBonus !== null);
 
-    // Definir el filtro de búsqueda (sin turno, que no está en el índice único)
+    // Definir el filtro de búsqueda (sin turno, que no está en el índice único real de la BD)
     const filter = { 
       gymnast: gymnastObjectId, 
       apparatus, 
@@ -311,7 +321,7 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
     }
 
     // Preparar datos de puntuación
-    // IMPORTANTE: NO incluimos 'turno' porque no está en el índice único.
+    // IMPORTANTE: NO incluimos 'turno' porque no está en el índice único actual.
     // Incluirlo causaría errores de duplicate key si el turno difiere del registro existente.
     const scoreData: any = {
       gymnast: gymnastObjectId,
@@ -349,29 +359,8 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
     // Usamos findOneAndUpdate con upsert: true.
     // Reutilizamos el 'filter' definido arriba (mismo que para delete).
     
-    logger.debug('Filter for findOneAndUpdate:', {
-      gymnast: gymnastObjectId.toString(),
-      apparatus,
-      tournament: tournament?.toString(),
-      institution: institutionId?.toString(),
-      judge: judgeObjectId.toString()
-    });
-    logger.debug('ScoreData to set:', scoreData);
-    
-    // Check what exists in DB
-    const existingScore = await Score.findOne(filter);
-    logger.debug('Found existing score:', existingScore ? 'YES' : 'NO');
-    if (existingScore) {
-      logger.debug('Existing score data:', {
-        _id: existingScore._id,
-        gymnast: existingScore.gymnast,
-        apparatus: existingScore.apparatus,
-        tournament: existingScore.tournament,
-        institution: existingScore.institution,
-        judge: existingScore.judge,
-        turno: (existingScore as any).turno
-      });
-    }
+    // logger.debug('Filter for findOneAndUpdate:', { ... });
+    // logger.debug('ScoreData to set:', scoreData);
     
     const updatedScore = await Score.findOneAndUpdate(
        filter, 

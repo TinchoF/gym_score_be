@@ -14,10 +14,10 @@ export const submitScoreSchema = z.object({
   tournament: z.string().min(1, 'El ID del torneo es requerido'),
   
   // Score fields - at least one should be provided
-  deductions: z.number().min(0).max(10).optional(),
-  startValue: z.number().min(0).optional(),
-  difficultyBonus: z.number().min(0).optional(),
-  dScore: z.number().min(0).optional(),
+  deductions: z.number().min(0).max(10).nullable().optional(),
+  startValue: z.number().min(0).nullable().optional(),
+  difficultyBonus: z.number().min(0).nullable().optional(),
+  dScore: z.number().min(0).nullable().optional(),
   
   // Metadata
   judgeType: JudgeTypeEnum.optional(),

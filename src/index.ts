@@ -69,6 +69,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 5000;
 app.set('socketio', io);
+app.set('etag', false); // Disable 304 Not Modified responses
 
 // Rate limiting for authentication routes
 const authLimiter = rateLimit({
