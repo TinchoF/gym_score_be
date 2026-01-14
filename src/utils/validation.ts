@@ -128,7 +128,6 @@ export const gymnastsQuerySchema = z.object({
   group: z.coerce.number().int().positive().optional(),
   gender: z.enum(['F', 'M']).optional(),
   tournamentId: z.string().optional(), // Validated separately if present
-  populateTournament: z.enum(['true', 'false']).optional(),
 });
 
 // Export types for TypeScript

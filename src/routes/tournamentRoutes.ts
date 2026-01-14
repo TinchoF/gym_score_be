@@ -36,9 +36,9 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const institutionId = (req as any).user.institutionId;
-    const { name, groupCount, baseScore, turnos, turnoConfig } = req.body;
+    const {name, turnoConfig } = req.body;
     
-    // Verificar que el torneo pertenece a la institución del usuario
+    // Verify that the tournament belongs to the user's institution
     const existingTournament = await Tournament.findById(req.params.id);
     if (!existingTournament) {
       return res.status(404).json({ message: 'Tournament not found' });
@@ -49,9 +49,6 @@ router.put('/:id', async (req, res) => {
     
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
-    if (groupCount !== undefined) updateData.groupCount = groupCount;
-    if (baseScore !== undefined) updateData.baseScore = baseScore;
-    if (turnos !== undefined) updateData.turnos = turnos;
     if (turnoConfig !== undefined) updateData.turnoConfig = turnoConfig;
     
     const tournament = await Tournament.findByIdAndUpdate(

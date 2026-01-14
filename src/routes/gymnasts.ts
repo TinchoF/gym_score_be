@@ -16,7 +16,7 @@ router.use(authenticateToken);
 // Get all gymnasts with optional filters
 router.get('/', async (req, res) => {
   try {
-    const { level, group, populateTournament, gender, tournamentId } = req.query;
+    const { level, group, gender, tournamentId } = req.query;
     const institutionId = (req as any).user.institutionId;
     const filters: any = { institution: institutionId };
     if (level) filters.level = level;
@@ -28,13 +28,7 @@ router.get('/', async (req, res) => {
       filters['tournaments.tournament'] = new mongoose.Types.ObjectId(tournamentId as string);
     }
 
-    let query = Gymnast.find(filters);
-
-    if (populateTournament === 'true') {
-      query = query.populate('tournaments.tournament');
-    }
-
-    const gymnasts = await query;
+    const gymnasts = await Gymnast.find(filters);
 
     const enrichedGymnasts = gymnasts.map((gymnast) => {
       const category = calculateCategory(gymnast.birthDate as Date, gymnast.gender as 'F' | 'M');
