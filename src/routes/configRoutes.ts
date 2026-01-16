@@ -92,7 +92,7 @@ router.get('/scoring/:level', async (req, res) => {
 router.post('/scoring', async (req, res) => {
   try {
     // TODO: Add super-admin check middleware
-    const { level, scoringMethod, baseStartValue, hasBonuses, description } = req.body;
+    const { level, scoringMethod, baseStartValue, hasBonuses, description, gender } = req.body;
     
     // Check if level already exists
     const existing = await ScoringConfig.findOne({ level });
@@ -106,6 +106,7 @@ router.post('/scoring', async (req, res) => {
       baseStartValue,
       hasBonuses,
       description,
+      gender: gender || ['GAM', 'GAF'], // Default to both if not specified
       active: true
     });
     
@@ -126,11 +127,11 @@ router.put('/scoring/:id', async (req, res) => {
   try {
     // TODO: Add super-admin check middleware
     const { id } = req.params;
-    const { level, scoringMethod, baseStartValue, hasBonuses, description } = req.body;
+    const { level, scoringMethod, baseStartValue, hasBonuses, description, gender } = req.body;
     
     const updatedConfig = await ScoringConfig.findByIdAndUpdate(
       id,
-      { level, scoringMethod, baseStartValue, hasBonuses, description },
+      { level, scoringMethod, baseStartValue, hasBonuses, description, gender },
       { new: true, runValidators: true }
     );
     

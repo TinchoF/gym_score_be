@@ -7,6 +7,7 @@ export interface IScoringConfig extends Document {
   hasBonuses: boolean;
   description?: string;
   active: boolean;
+  gender: ('GAM' | 'GAF')[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +41,18 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
     type: Boolean, 
     required: true,
     default: true 
+  },
+  gender: {
+    type: [String],
+    required: true,
+    enum: ['GAM', 'GAF'],
+    default: ['GAM', 'GAF'],
+    validate: {
+      validator: function(v: string[]) {
+        return v && v.length > 0 && v.length <= 2;
+      },
+      message: 'Gender array must contain 1 or 2 values'
+    }
   }
 }, { 
   timestamps: true 
@@ -48,5 +61,6 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
 // Index for faster queries
 ScoringConfigSchema.index({ level: 1 });
 ScoringConfigSchema.index({ active: 1 });
+ScoringConfigSchema.index({ gender: 1 });
 
 export default mongoose.model<IScoringConfig>('ScoringConfig', ScoringConfigSchema);

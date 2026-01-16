@@ -401,6 +401,153 @@ router.get('/groups', async (req, res) => {
   }
 });
 
+// Get all gymnasts with incompatible gender-level combinations
+router.get('/incompatible', async (req, res) => {
+  try {
+    const institutionId = (req as any).user.institutionId;
+    
+    // Import ScoringConfig model
+    const ScoringConfig = (await import('../models/ScoringConfig')).default;
+    
+    // Get all active scoring configs
+    const configs = await ScoringConfig.find({ active: true }).lean();
+    logger.info(`Found ${configs.length} active scoring configs`);
+    
+    // Debug: Log first config to check structure
+    if (configs.length > 0) {
+      logger.debug('Sample config:', JSON.stringify(configs[0]));
+    }
+    
+    // Get all gymnasts for this institution
+    const gymnasts = await Gymnast.find({ institution: institutionId }).lean();
+    logger.info(`Found ${gymnasts.length} gymnasts for institution ${institutionId}`);
+    
+    // Find incompatible gymnasts
+    const incompatible = gymnasts.filter(gymnast => {
+      const config = configs.find((c: any) => c.level === gymnast.level);
+      
+      // If level not configured, skip (not incompatible, just not configured)
+      if (!config) {
+        logger.debug(`Gymnast ${gymnast.name} has unconfigured level: ${gymnast.level}`);
+        return false;
+      }
+      
+      const gymnastGender = gymnast.gender === 'M' ? 'GAM' : 'GAF';
+      const configGender = (config as any).gender;
+      
+      // If config doesn't have gender field yet (pre-migration), assume it supports both
+      if (!configGender || !Array.isArray(configGender)) {
+        logger.debug(`Config for level ${gymnast.level} has no gender field or is not an array:`, configGender);
+        return false;
+      }
+      
+      // Check if the config's gender array includes the gymnast's gender
+      const isCompatible = configGender.includes(gymnastGender);
+      
+      if (!isCompatible) {
+        logger.info(`⚠️  Incompatible: Gymnast ${gymnast.name} (${gymnastGender}) with level ${gymnast.level} (supports: ${configGender.join(', ')})`);
+      }
+      
+      return !isCompatible;
+    });
+    
+    logger.info(`Found ${incompatible.length} incompatible gymnasts`);
+    
+    // Group by level and gender
+    const grouped = incompatible.reduce((acc: any, gymnast) => {
+      const key = `${gymnast.level}-${gymnast.gender}`;
+      if (!acc[key]) {
+        acc[key] = {
+          level: gymnast.level,
+          gender: gymnast.gender,
+          count: 0,
+          gymnasts: []
+        };
+      }
+      acc[key].count++;
+      acc[key].gymnasts.push({
+        _id: gymnast._id,
+        name: gymnast.name,
+        birthDate: gymnast.birthDate
+      });
+      return acc;
+    }, {});
+    
+    const result = Object.values(grouped);
+    logger.info(`Returning ${result.length} grouped incompatibilities`);
+    
+    res.json(result);
+  } catch (error) {
+    logger.error('Error getting incompatible gymnasts:', error);
+    res.status(500).json({ error: 'Error getting incompatible gymnasts' });
+  }
+});
+
+// Bulk migrate gymnasts from one level to another
+router.post('/migrate-level', async (req, res) => {
+  try {
+    const { gymnastIds, targetLevel } = req.body;
+    const institutionId = (req as any).user.institutionId;
+    const user = (req as any).user;
+    
+    // Validation
+    if (!gymnastIds || !Array.isArray(gymnastIds) || gymnastIds.length === 0) {
+      return res.status(400).json({ error: 'gymnastIds must be a non-empty array' });
+    }
+    
+    if (!targetLevel) {
+      return res.status(400).json({ error: 'targetLevel is required' });
+    }
+    
+    // Validate all IDs
+    const invalidIds = gymnastIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ error: `Invalid gymnast IDs: ${invalidIds.join(', ')}` });
+    }
+    
+    const gymnastObjectIds = gymnastIds.map(id => new mongoose.Types.ObjectId(id));
+    
+    // Update all gymnasts
+    const result = await Gymnast.updateMany(
+      { 
+        _id: { $in: gymnastObjectIds }, 
+        institution: institutionId 
+      },
+      { 
+        $set: { 
+          level: targetLevel,
+          updatedBy: user._id
+        } 
+      }
+    );
+    
+    // Audit log for migration
+    await logAudit({
+      action: 'UPDATE',
+      entityType: 'gymnast',
+      entityId: gymnastObjectIds[0].toString(), // First gymnast ID for reference
+      performedBy: user._id,
+      performedByRole: user.role,
+      institution: institutionId,
+      details: { 
+        action: 'level_migration',
+        targetLevel,
+        gymnastCount: result.modifiedCount,
+        gymnastIds: gymnastIds
+      },
+    });
+    
+    res.json({
+      success: true,
+      migratedCount: result.modifiedCount,
+      message: `${result.modifiedCount} gymnast(s) migrated to ${targetLevel}`
+    });
+    
+  } catch (error) {
+    logger.error('Error migrating gymnasts:', error);
+    res.status(500).json({ error: 'Error migrating gymnasts' });
+  }
+});
 
 
 // Delete a gymnast
