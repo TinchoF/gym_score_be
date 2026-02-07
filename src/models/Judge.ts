@@ -26,6 +26,7 @@ const JudgeSchema = new mongoose.Schema({
   institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: true },
   // Flag para indicar que la contraseña ya está hasheada (para migración)
   passwordHashed: { type: Boolean, default: false },
+  isHeadJudge: { type: Boolean, default: false },
 }, { strict: false });
 
 // Pre-save hook para encriptar contraseñas
