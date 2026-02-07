@@ -146,14 +146,11 @@ router.get('/', async (req, res) => {
            // ALWAYS require deductions
            const hasDeductions = js.deductions !== undefined && js.deductions !== null;
            if (!hasDeductions) return false;
-           
-           if (js.scoringMethod === 'fig_code') {
-               return typeof js.dScore === 'number' && js.dScore > 0;
-           }
-           if (js.scoringMethod === 'start_value_bonus') {
-               return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
-           }
-           return true; 
+                      if (js.scoringMethod === 'fig_code') {
+                return typeof js.dScore === 'number' && js.dScore > 0;
+            }
+            // For start_value with bonuses, check if bonus field has data
+            return true; 
         })
         .map((js: any) => String(js.judge?._id || js.judge));
 
@@ -305,7 +302,6 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
                 const hasDeductions = js.deductions !== undefined && js.deductions !== null;
                 if (!hasDeductions) return false;
                 if (js.scoringMethod === 'fig_code') return typeof js.dScore === 'number' && js.dScore > 0;
-                if (js.scoringMethod === 'start_value_bonus') return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
                 return true;
             })
             .map(js => String((js.judge as any)?._id || js.judge))
@@ -402,7 +398,6 @@ router.post('/', validate(submitScoreSchema), async (req, res) => {
             const hasDeductions = js.deductions !== undefined && js.deductions !== null;
             if (!hasDeductions) return false;
             if (js.scoringMethod === 'fig_code') return typeof js.dScore === 'number' && js.dScore > 0;
-            if (js.scoringMethod === 'start_value_bonus') return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
             return true;
         })
         .map(js => String((js.judge as any)._id))

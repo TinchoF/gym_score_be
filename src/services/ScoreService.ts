@@ -95,6 +95,7 @@ export class ScoreService {
         startValue: s.startValue,
         difficultyBonus: s.difficultyBonus,
         dScore: s.dScore,
+        neutralDeduction: s.neutralDeduction,
         judgeType: s.judgeType,
         scoringMethod: s.scoringMethod,
         level: s.level,
@@ -179,9 +180,11 @@ export class ScoreService {
       const requestUserId = requestUser?.id;
 
       // Calculate results
-      const results = Object.values(grouped).map((g: any) => {
+       const results = Object.values(grouped).map((g: any) => {
         const deductions = g.judgeScores.map((js: any) => js.deductions);
+        const neutralDeductions = g.judgeScores.map((js: any) => js.neutralDeduction || 0);
         const final = calculateFinalDeductions(deductions);
+        const finalNeutral = calculateFinalDeductions(neutralDeductions);
 
         const completedJudges = g.judgeScores
           .filter((js: any) => {
@@ -190,9 +193,6 @@ export class ScoreService {
             
             if (js.scoringMethod === 'fig_code') {
               return typeof js.dScore === 'number' && js.dScore > 0;
-            }
-            if (js.scoringMethod === 'start_value_bonus') {
-              return js.difficultyBonus !== undefined && js.difficultyBonus !== null;
             }
             return true;
           })
@@ -212,6 +212,7 @@ export class ScoreService {
           tournament: g.tournament,
           institution: g.institution,
           finalDeduction: final,
+          finalNeutralDeduction: finalNeutral,
           completedJudges,
           expectedJudgesCount,
           judgeScores: g.judgeScores,
@@ -229,6 +230,7 @@ export class ScoreService {
             myScore: myEntry ? myEntry.deductions : null,
             myDScore: myEntry ? myEntry.dScore : null,
             myBonus: myEntry ? myEntry.difficultyBonus : null,
+            myNeutralDeduction: myEntry ? myEntry.neutralDeduction : null,
             judgeScores: undefined
           };
         }

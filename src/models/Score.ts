@@ -15,6 +15,7 @@ const ScoreSchema = new mongoose.Schema({
   startValue: { type: Number, required: false, min: 0 }, // Start Value base (para start_value y start_value_bonus)
   difficultyBonus: { type: Number, required: false, min: 0 }, // Bonificación por dificultad
   dScore: { type: Number, required: false, min: 0 }, // D-Score para fig_code (sin límite máximo)
+  neutralDeduction: { type: Number, required: false, min: 0, max: 10 }, // Deducción neutral (opcional)
   
   // Tipo de juez (E = Ejecución, D = Dificultad)
   judgeType: { type: String, enum: ['E', 'D'], default: 'E' },

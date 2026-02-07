@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Enum for scoring methods
-export const ScoringMethodEnum = z.enum(['deductions', 'start_value', 'start_value_bonus', 'fig_code']);
+export const ScoringMethodEnum = z.enum(['deductions', 'start_value', 'fig_code']);
 
 // Enum for judge types
 export const JudgeTypeEnum = z.enum(['E', 'D']);
@@ -18,6 +18,7 @@ export const submitScoreSchema = z.object({
   startValue: z.number().min(0).nullable().optional(),
   difficultyBonus: z.number().min(0).nullable().optional(),
   dScore: z.number().min(0).nullable().optional(),
+  neutralDeduction: z.number().min(0).max(10).nullable().optional(),
   
   // Metadata
   judgeType: JudgeTypeEnum.optional(),
@@ -29,7 +30,8 @@ export const submitScoreSchema = z.object({
     return data.deductions !== undefined || 
            data.startValue !== undefined || 
            data.difficultyBonus !== undefined || 
-           data.dScore !== undefined;
+           data.dScore !== undefined ||
+           data.neutralDeduction !== undefined;
   },
   {
     message: 'Al menos un campo de puntuación debe ser proporcionado',

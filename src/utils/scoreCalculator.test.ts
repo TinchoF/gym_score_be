@@ -74,8 +74,8 @@ describe('Score Calculator System', () => {
       expect(result?.finalScore).toBe(8.9); // 9.5 - 0.6
     });
 
-    test('Method: start_value_bonus (Start Value + Bonus - Deductions)', () => {
-      const result = calculateFinalScore('start_value_bonus', {
+    test('Method: start_value with bonuses (Start Value + Bonus - Deductions)', () => {
+      const result = calculateFinalScore('start_value', {
         startValue: 9.0,
         difficultyBonuses: [0.3, 0.5], // Avg: 0.4
         deductions: [1.0], // 1.0

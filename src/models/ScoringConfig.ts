@@ -2,12 +2,14 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IScoringConfig extends Document {
   level: string;
-  scoringMethod: 'deductions' | 'start_value' | 'start_value_bonus' | 'fig_code';
+  scoringMethod: 'deductions' | 'start_value' | 'fig_code';
   baseStartValue?: number;
   hasBonuses: boolean;
+  editableStartValue: boolean;
   description?: string;
   active: boolean;
   gender: ('GAM' | 'GAF')[];
+  hasNeutralDeductions: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,7 +24,7 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
   scoringMethod: { 
     type: String, 
     required: true,
-    enum: ['deductions', 'start_value', 'start_value_bonus', 'fig_code']
+    enum: ['deductions', 'start_value', 'fig_code']
   },
   baseStartValue: { 
     type: Number, 
@@ -32,6 +34,11 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
     type: Boolean, 
     required: true,
     default: false 
+  },
+  editableStartValue: {
+    type: Boolean,
+    required: true,
+    default: false
   },
   description: { 
     type: String, 
@@ -53,6 +60,11 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
       },
       message: 'Gender array must contain 1 or 2 values'
     }
+  },
+  hasNeutralDeductions: {
+    type: Boolean,
+    required: true,
+    default: false
   }
 }, { 
   timestamps: true 
