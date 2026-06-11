@@ -15,11 +15,10 @@ export interface IScoringConfig extends Document {
 }
 
 const ScoringConfigSchema = new Schema<IScoringConfig>({
-  level: { 
-    type: String, 
-    required: true, 
-    unique: true,
-    trim: true 
+  level: {
+    type: String,
+    required: true,
+    trim: true
   },
   scoringMethod: { 
     type: String, 
