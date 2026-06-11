@@ -94,12 +94,6 @@ router.post('/scoring', async (req, res) => {
     // TODO: Add super-admin check middleware
     const { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender } = req.body;
     
-    // Check if level already exists
-    const existing = await ScoringConfig.findOne({ level });
-    if (existing) {
-      return res.status(400).json({ error: 'Level configuration already exists' });
-    }
-    
     const newConfig = new ScoringConfig({
       level,
       scoringMethod,
