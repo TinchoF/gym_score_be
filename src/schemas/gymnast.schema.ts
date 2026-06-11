@@ -14,6 +14,7 @@ export const TournamentEnrollmentSchema = z.object({
   tournament: z.string().min(1, 'El ID del torneo es requerido'),
   payment: z.boolean().optional().default(false),
   turno: z.string().optional(),
+  group: z.number().int().min(0).nullable().optional(),
 });
 
 // Create gymnast schema
@@ -25,7 +26,6 @@ export const createGymnastSchema = z.object({
   }),
   level: z.string().min(1, 'El nivel es requerido'),
   apparatusLevels: z.array(ApparatusLevelSchema).optional(),
-  group: z.number().int().min(0).optional(),
   tournaments: z.array(TournamentEnrollmentSchema).optional(),
   coach: z.string().max(100).optional(),
   club: z.string().max(100).optional(),
@@ -41,8 +41,9 @@ export const updateGymnastSchema = z.object({
   }).optional(),
   level: z.string().min(1).optional(),
   apparatusLevels: z.array(ApparatusLevelSchema).optional(),
-  group: z.number().int().min(0).optional(),
   tournaments: z.array(TournamentEnrollmentSchema).optional(),
+  tournamentId: z.string().optional(),
+  group: z.number().int().min(0).nullable().optional(),
   coach: z.string().max(100).optional(),
   club: z.string().max(100).optional(),
 });

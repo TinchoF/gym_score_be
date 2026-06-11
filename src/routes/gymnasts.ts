@@ -20,12 +20,15 @@ router.get('/', async (req, res) => {
     const institutionId = (req as any).user.institutionId;
     const filters: any = { institution: institutionId };
     if (level) filters.level = level;
-    if (group) filters.group = group;
     if (gender) filters.gender = gender;
-    
-    // Filter by tournament (check if gymnast has this tournament in their tournaments array)
+
     if (tournamentId && mongoose.Types.ObjectId.isValid(tournamentId as string)) {
-      filters['tournaments.tournament'] = new mongoose.Types.ObjectId(tournamentId as string);
+      const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string);
+      if (group) {
+        filters['tournaments'] = { $elemMatch: { tournament: tournamentObjectId, group: Number(group) } };
+      } else {
+        filters['tournaments.tournament'] = tournamentObjectId;
+      }
     }
 
     const gymnasts = await Gymnast.find(filters);
@@ -222,7 +225,7 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
     }
 
     // Crear un objeto de actualización a partir del cuerpo de la solicitud
-    const { tournamentId, turno, payment, tournaments: tournamentsData, ...updateData } = req.body;
+    const { tournamentId, turno, payment, group, tournaments: tournamentsData, ...updateData } = req.body;
 
     // Handle tournaments array - either from direct array or legacy single tournament
     if (tournamentsData !== undefined) {
@@ -263,6 +266,23 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
       }
     }
 
+    // Actualizar grupo dentro del enrollment del torneo correspondiente
+    if (group !== undefined && tournamentId && mongoose.Types.ObjectId.isValid(tournamentId)) {
+      const gymnast = await Gymnast.findById(id);
+      if (gymnast) {
+        const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId);
+        const idx = (gymnast as any).tournaments?.findIndex(
+          (t: any) => t.tournament?.toString() === tournamentObjectId.toString()
+        ) ?? -1;
+        if (idx >= 0) {
+          await Gymnast.updateOne(
+            { _id: id },
+            { $set: { [`tournaments.${idx}.group`]: group === null ? undefined : group } }
+          );
+        }
+      }
+    }
+
     logger.debug('Updating gymnast:', id, 'with data:', updateData);
 
     // Actualizar el gimnasta con los datos proporcionados
@@ -294,28 +314,19 @@ router.get('/by-rotation', async (req, res) => {
 
     const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string)
 
-    // Construir el filtro de búsqueda
     // Asegurarnos que 'group' sea number
     const groupNumber = Number(group);
     if (isNaN(groupNumber)) {
       return res.status(400).json({ error: 'group no válido' });
     }
 
-    // Filter by tournaments.tournament array
-    const filter: any = { 
-      'tournaments.tournament': tournamentObjectId, 
-      group: groupNumber,
+    // Filtrar por tournament + group (+ turno si se proporciona) dentro del array de inscripciones
+    const enrollmentMatch: any = { tournament: tournamentObjectId, group: groupNumber };
+    if (turno) enrollmentMatch.turno = turno;
+
+    const filter: any = {
+      tournaments: { $elemMatch: enrollmentMatch },
     };
-    
-    // Agregar filtro por turno si se proporciona (dentro del array de tournaments)
-    if (turno) {
-      filter['tournaments'] = { 
-        $elemMatch: { 
-          tournament: tournamentObjectId, 
-          turno: turno 
-        } 
-      };
-    }
 
     // Filtrar por género según aparato
     const maleOnlyApparatuses = ["Anillas", "Arzones", "Barra", "Paralelas"];
@@ -387,12 +398,18 @@ router.get('/groups', async (req, res) => {
       };
     }
 
-    const groups = await Gymnast.distinct('group', filter);
-    // Filtrar y ordenar números válidos
-    const numericGroups = groups
-      .map(g => Number(g))
-      .filter(n => !isNaN(n) && n > 0)
-      .sort((a, b) => a - b);
+    const pipeline: any[] = [
+      { $match: filter },
+      { $unwind: '$tournaments' },
+      { $match: { 'tournaments.tournament': tournamentObjectId, ...(turno ? { 'tournaments.turno': turno } : {}) } },
+      { $group: { _id: '$tournaments.group' } },
+      { $match: { _id: { $ne: null } } },
+      { $sort: { _id: 1 } },
+    ];
+    const result = await Gymnast.aggregate(pipeline);
+    const numericGroups = result
+      .map((r: any) => Number(r._id))
+      .filter(n => !isNaN(n) && n > 0);
 
     res.json({ groups: numericGroups });
   } catch (error) {

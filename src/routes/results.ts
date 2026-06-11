@@ -58,15 +58,14 @@ router.get('/', async (req, res) => {
       { $unwind: { path: '$gymnast', preserveNullAndEmptyArrays: true } },
     ];
 
-    if (group) {
+    if (group && filter.tournament) {
         const groupNumber = Number(group);
         if (!isNaN(groupNumber)) {
             pipeline.push({
-                $match: { 
-                    $or: [
-                        { 'gymnast.group': groupNumber },
-                        { 'gymnast.group': String(groupNumber) }
-                    ]
+                $match: {
+                    'gymnast.tournaments': {
+                        $elemMatch: { tournament: filter.tournament, group: groupNumber },
+                    },
                 },
             });
         }

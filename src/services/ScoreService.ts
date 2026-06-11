@@ -1,6 +1,5 @@
 import Score from '../models/Score';
 import Judge from '../models/Judge';
-import Gymnast from '../models/Gymnast';
 import mongoose from 'mongoose';
 import { calculateFinalDeductions } from '../utils/scoreCalculator';
 import logger from '../utils/logger';
@@ -39,9 +38,13 @@ export class ScoreService {
       { $unwind: '$gymnast' },
     ];
 
-    if (group) {
+    if (group && filter.tournament) {
       pipeline.push({
-        $match: { 'gymnast.group': group },
+        $match: {
+          'gymnast.tournaments': {
+            $elemMatch: { tournament: filter.tournament, group: group },
+          },
+        },
       });
     }
 
