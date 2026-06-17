@@ -235,6 +235,7 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
           tournament: new mongoose.Types.ObjectId(t.tournament || t.tournamentId),
           payment: t.payment || false,
           turno: t.turno || '',
+          ...(t.group !== undefined && t.group !== null ? { group: t.group } : {}),
         }));
       }
     } else if (tournamentId) {
@@ -246,40 +247,32 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
         const existingIndex = existingTournaments.findIndex(
           (t: any) => t.tournament?.toString() === tournamentObjectId.toString()
         );
-        
+
         if (existingIndex >= 0) {
           // Update existing
-          existingTournaments[existingIndex] = {
-            ...existingTournaments[existingIndex],
+          const updatedEnrollment: any = {
+            ...existingTournaments[existingIndex].toObject?.() ?? existingTournaments[existingIndex],
             turno: turno ?? existingTournaments[existingIndex].turno,
             payment: payment ?? existingTournaments[existingIndex].payment,
           };
+          if (group !== undefined) {
+            if (group === null) {
+              delete updatedEnrollment.group;
+            } else {
+              updatedEnrollment.group = group;
+            }
+          }
+          existingTournaments[existingIndex] = updatedEnrollment;
         } else {
           // Add new
           existingTournaments.push({
             tournament: tournamentObjectId,
             payment: payment || false,
             turno: turno || '',
+            ...(group != null ? { group } : {}),
           });
         }
         updateData.tournaments = existingTournaments;
-      }
-    }
-
-    // Actualizar grupo dentro del enrollment del torneo correspondiente
-    if (group !== undefined && tournamentId && mongoose.Types.ObjectId.isValid(tournamentId)) {
-      const gymnast = await Gymnast.findById(id);
-      if (gymnast) {
-        const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId);
-        const idx = (gymnast as any).tournaments?.findIndex(
-          (t: any) => t.tournament?.toString() === tournamentObjectId.toString()
-        ) ?? -1;
-        if (idx >= 0) {
-          await Gymnast.updateOne(
-            { _id: id },
-            { $set: { [`tournaments.${idx}.group`]: group === null ? undefined : group } }
-          );
-        }
       }
     }
 
