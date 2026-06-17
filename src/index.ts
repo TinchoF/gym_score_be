@@ -70,6 +70,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 5000;
 app.set('socketio', io);
 app.set('etag', false); // Disable 304 Not Modified responses
+app.set('trust proxy', 1); // Trust Heroku's proxy so rate limiters use real client IPs
 
 // Rate limiting for authentication routes
 const authLimiter = rateLimit({

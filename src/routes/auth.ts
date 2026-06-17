@@ -1,6 +1,5 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
 import Admin from '../models/Admin';
 import Judge from '../models/Judge';
 import Institution from '../models/Institution';
@@ -9,17 +8,8 @@ import { getJudgesList } from './authController';
 
 const router = express.Router();
 
-// Rate limiter para prevenir ataques de fuerza bruta
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 5, // máximo 5 intentos por ventana por IP
-  message: { error: 'Demasiados intentos de login. Por favor espere 15 minutos.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // Ruta para login
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password, role } = req.body;  // role puede ser 'admin' o 'judge'
   try {
     let user;
