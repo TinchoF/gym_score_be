@@ -15,14 +15,14 @@ const MIN_BIRTH_YEAR = new Date().getFullYear() - 100;
 
 async function validateLevelAndGender(level: string, gender: string): Promise<string | null> {
   const genderCode = gender === 'M' ? 'GAM' : 'GAF';
-  const config = await ScoringConfig.findOne({ level, active: true });
-  if (!config) {
+  const compatible = await ScoringConfig.findOne({ level, active: true, gender: genderCode });
+  if (compatible) return null;
+
+  const anyConfig = await ScoringConfig.findOne({ level, active: true });
+  if (!anyConfig) {
     return `El nivel "${level}" no existe o no está activo`;
   }
-  if (!config.gender.includes(genderCode as 'GAM' | 'GAF')) {
-    return `El nivel "${level}" no es compatible con el género ${genderCode} (admite: ${config.gender.join(', ')})`;
-  }
-  return null;
+  return `El nivel "${level}" no es compatible con el género ${genderCode}`;
 }
 
 function validateBirthDate(birthDate: string): string | null {
