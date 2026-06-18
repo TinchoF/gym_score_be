@@ -3,12 +3,38 @@ import express from 'express';
 import Gymnast from '../models/Gymnast';
 import mongoose from 'mongoose';
 import Rotation from '../models/Rotation';
+import ScoringConfig from '../models/ScoringConfig';
 import { authenticateToken } from '../middlewares/authMiddleware';
 import { calculateCategory } from '../utils/categoryCalculator';
 import { logAudit } from '../utils/auditLogger';
 import logger from '../utils/logger';
 import { validate } from '../middlewares/errorHandler';
 import { createGymnastSchema, updateGymnastSchema, bulkUpdateTournamentsSchema, bulkClearTournamentsSchema } from '../schemas/gymnast.schema';
+
+const MIN_BIRTH_YEAR = new Date().getFullYear() - 100;
+
+async function validateLevelAndGender(level: string, gender: string): Promise<string | null> {
+  const genderCode = gender === 'M' ? 'GAM' : 'GAF';
+  const config = await ScoringConfig.findOne({ level, active: true });
+  if (!config) {
+    return `El nivel "${level}" no existe o no está activo`;
+  }
+  if (!config.gender.includes(genderCode as 'GAM' | 'GAF')) {
+    return `El nivel "${level}" no es compatible con el género ${genderCode} (admite: ${config.gender.join(', ')})`;
+  }
+  return null;
+}
+
+function validateBirthDate(birthDate: string): string | null {
+  const date = new Date(birthDate);
+  if (date > new Date()) {
+    return 'La fecha de nacimiento no puede ser en el futuro';
+  }
+  if (date.getFullYear() < MIN_BIRTH_YEAR) {
+    return `La fecha de nacimiento no puede ser anterior al año ${MIN_BIRTH_YEAR}`;
+  }
+  return null;
+}
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -54,6 +80,14 @@ router.get('/', async (req, res) => {
 // Create new gymnast with validation
 router.post('/', validate(createGymnastSchema), async (req, res) => {
   try {
+    const { birthDate, level, gender } = req.body;
+
+    const birthDateError = validateBirthDate(birthDate);
+    if (birthDateError) return res.status(400).json({ error: birthDateError });
+
+    const levelGenderError = await validateLevelAndGender(level, gender);
+    if (levelGenderError) return res.status(400).json({ error: levelGenderError });
+
     // Extraer datos del cuerpo de la solicitud
     const { _id, tournamentId, turno, payment, tournaments: tournamentsData, ...gymnastData } = req.body;
 
@@ -222,6 +256,22 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
     // Validar que el ID del gimnasta es válido
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'ID de gimnasta no válido' });
+    }
+
+    const { birthDate, level, gender } = req.body;
+
+    if (birthDate) {
+      const birthDateError = validateBirthDate(birthDate);
+      if (birthDateError) return res.status(400).json({ error: birthDateError });
+    }
+
+    if (level || gender) {
+      const existing = await Gymnast.findById(id).lean();
+      if (!existing) return res.status(404).json({ error: 'Gimnasta no encontrado' });
+      const resolvedLevel = level ?? existing.level;
+      const resolvedGender = gender ?? existing.gender;
+      const levelGenderError = await validateLevelAndGender(resolvedLevel, resolvedGender);
+      if (levelGenderError) return res.status(400).json({ error: levelGenderError });
     }
 
     // Crear un objeto de actualización a partir del cuerpo de la solicitud
