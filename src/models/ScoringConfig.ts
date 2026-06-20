@@ -10,6 +10,7 @@ export interface IScoringConfig extends Document {
   active: boolean;
   gender: ('GAM' | 'GAF')[];
   hasNeutralDeductions: boolean;
+  allowedApparatuses?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,8 +65,13 @@ const ScoringConfigSchema = new Schema<IScoringConfig>({
     type: Boolean,
     required: true,
     default: false
+  },
+  allowedApparatuses: {
+    type: [String],
+    required: false,
+    default: []
   }
-}, { 
+}, {
   timestamps: true 
 });
 

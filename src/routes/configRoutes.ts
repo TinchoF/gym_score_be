@@ -92,8 +92,8 @@ router.get('/scoring/:level', async (req, res) => {
 router.post('/scoring', async (req, res) => {
   try {
     // TODO: Add super-admin check middleware
-    const { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender } = req.body;
-    
+    const { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender, allowedApparatuses } = req.body;
+
     const newConfig = new ScoringConfig({
       level,
       scoringMethod,
@@ -102,7 +102,8 @@ router.post('/scoring', async (req, res) => {
       editableStartValue: editableStartValue || false,
       hasNeutralDeductions: hasNeutralDeductions || false,
       description,
-      gender: gender || ['GAM', 'GAF'], // Default to both if not specified
+      gender: gender || ['GAM', 'GAF'],
+      allowedApparatuses: allowedApparatuses || [],
       active: true
     });
     
@@ -123,11 +124,11 @@ router.put('/scoring/:id', async (req, res) => {
   try {
     // TODO: Add super-admin check middleware
     const { id } = req.params;
-    const { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender } = req.body;
-    
+    const { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender, allowedApparatuses } = req.body;
+
     const updatedConfig = await ScoringConfig.findByIdAndUpdate(
       id,
-      { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender },
+      { level, scoringMethod, baseStartValue, hasBonuses, editableStartValue, hasNeutralDeductions, description, gender, allowedApparatuses: allowedApparatuses || [] },
       { new: true, runValidators: true }
     );
     
