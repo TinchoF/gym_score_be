@@ -39,7 +39,7 @@ export type Apparatus = GAFApparatus | GAMApparatus;
 
 // Official CAG categories
 export const GAF_CATEGORIES = ['Pulga', 'Pre-Mini', 'Mini', 'Pre-Infantil', 'Infantil', 'Juvenil', 'Mayor'] as const;
-export const GAM_CATEGORIES = ['Pulga', 'Mini', 'Menores', 'Infantiles', 'Cadetes', 'Juveniles', 'Mayores', 'Senior'] as const;
+export const GAM_CATEGORIES = ['Pulga', 'Mini', 'Pre-infantil', 'Infantiles', 'Cadetes', 'Juveniles', 'Junior', 'Mayor', 'Senior'] as const;
 
 export type GAFCategory = typeof GAF_CATEGORIES[number];
 export type GAMCategory = typeof GAM_CATEGORIES[number];

@@ -25,16 +25,17 @@ export function calculateCategory(birthDate: Date | string, gender: 'F' | 'M'): 
     if (age <= 15) return 'Juvenil';       // 14-15 años
     return 'Mayor';                         // 16+ años
   } 
-  // Categorías GAM (Gimnasia Artística Masculina) - CAG 2020-2024
+  // Categorías GAM (Gimnasia Artística Masculina) - CAG 2023-2029
   else {
     if (age < 6) return 'Pulga';           // No oficial, para escuelitas
     if (age <= 7) return 'Mini';           // hasta 7 años
-    if (age <= 9) return 'Menores';        // 8-9 años
+    if (age <= 9) return 'Pre-infantil';   // 8-9 años
     if (age <= 11) return 'Infantiles';    // 10-11 años
     if (age <= 13) return 'Cadetes';       // 12-13 años
     if (age <= 15) return 'Juveniles';     // 14-15 años
-    if (age <= 17) return 'Mayores';       // 16-17 años
-    return 'Senior';                        // 18+ años
+    if (age <= 17) return 'Junior';        // 16-17 años
+    if (age < 35) return 'Mayor';          // 18-34 años
+    return 'Senior';                        // 35+ años
   }
 }
 
