@@ -56,6 +56,27 @@ router.put('/:id', async (req, res) => {
       updateData,
       { new: true }
     );
+
+    // Si se redujo la cantidad de grupos de un turno, los gimnastas que quedaron
+    // en un grupo fuera de rango pasan a "Sin Grupo" en vez de quedar invisibles.
+    if (turnoConfig !== undefined) {
+      const oldTurnoConfig = existingTournament.turnoConfig || [];
+      for (const oldTc of oldTurnoConfig) {
+        const newTc = turnoConfig.find((tc: any) => tc.turno === oldTc.turno);
+        if (newTc?.groupCount !== undefined && oldTc.groupCount !== undefined && newTc.groupCount < oldTc.groupCount) {
+          await Gymnast.updateMany(
+            {},
+            { $unset: { 'tournaments.$[elem].group': '' } },
+            { arrayFilters: [{
+              'elem.tournament': existingTournament._id,
+              'elem.turno': oldTc.turno,
+              'elem.group': { $gt: newTc.groupCount },
+            }] }
+          );
+        }
+      }
+    }
+
     res.json(tournament);
   } catch (error) {
     console.error('Error updating tournament:', error);
