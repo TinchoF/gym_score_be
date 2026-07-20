@@ -1,7 +1,16 @@
 import { z } from 'zod';
+import { GAF_CATEGORIES, GAM_CATEGORIES } from '../types';
 
 // Enum for gender
 export const GenderEnum = z.enum(['M', 'F']);
+
+const ALL_CATEGORIES = [...new Set([...GAF_CATEGORIES, ...GAM_CATEGORIES])] as [string, ...string[]];
+const CategoryEnum = z.enum(ALL_CATEGORIES);
+
+export function isCategoryValidForGender(category: string, gender: 'M' | 'F'): boolean {
+  const validCategories: readonly string[] = gender === 'F' ? GAF_CATEGORIES : GAM_CATEGORIES;
+  return validCategories.includes(category);
+}
 
 // Schema for apparatus levels (GAM)
 export const ApparatusLevelSchema = z.object({
@@ -21,24 +30,43 @@ export const TournamentEnrollmentSchema = z.object({
 export const createGymnastSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder 100 caracteres'),
   gender: GenderEnum,
-  birthDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+  // Se requiere birthDate o category (validado abajo): birthDate permite calcular la
+  // categoría automáticamente; category se usa cuando no se conoce la fecha de nacimiento.
+  birthDate: z.string().optional().refine((val) => !val || !isNaN(Date.parse(val)), {
     message: 'Fecha de nacimiento inválida'
   }),
+  category: CategoryEnum.optional(),
   level: z.string().min(1, 'El nivel es requerido'),
   apparatusLevels: z.array(ApparatusLevelSchema).optional(),
   tournaments: z.array(TournamentEnrollmentSchema).optional(),
   coach: z.string().max(100).optional(),
   club: z.string().max(100).optional(),
   institution: z.string().min(1, 'La institución es requerida'),
+}).superRefine((data, ctx) => {
+  if (!data.birthDate && !data.category) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Debe indicar la fecha de nacimiento o la categoría',
+      path: ['birthDate'],
+    });
+  }
+  if (data.category && !data.birthDate && !isCategoryValidForGender(data.category, data.gender)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'La categoría no es válida para el género seleccionado',
+      path: ['category'],
+    });
+  }
 });
 
 // Update gymnast schema (all fields optional except those that shouldn't change)
 export const updateGymnastSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   gender: GenderEnum.optional(),
-  birthDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+  birthDate: z.string().optional().refine((val) => !val || !isNaN(Date.parse(val)), {
     message: 'Fecha de nacimiento inválida'
-  }).optional(),
+  }),
+  category: CategoryEnum.optional(),
   level: z.string().min(1).optional(),
   apparatusLevels: z.array(ApparatusLevelSchema).optional(),
   tournaments: z.array(TournamentEnrollmentSchema).optional(),
@@ -46,6 +74,16 @@ export const updateGymnastSchema = z.object({
   group: z.number().int().min(0).nullable().optional(),
   coach: z.string().max(100).optional(),
   club: z.string().max(100).optional(),
+}).superRefine((data, ctx) => {
+  // La consistencia con el estado ya persistido (ej. si se limpia birthDate sin mandar
+  // category) se valida en la ruta, que conoce el registro existente.
+  if (data.category && data.gender && !data.birthDate && !isCategoryValidForGender(data.category, data.gender)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'La categoría no es válida para el género seleccionado',
+      path: ['category'],
+    });
+  }
 });
 
 // Bulk update tournaments schema

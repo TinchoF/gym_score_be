@@ -1,6 +1,7 @@
 import express from 'express';
 import { exportGymnastToExcel } from '../utils/exportToExcel';
 import Gymnast from '../models/Gymnast';
+import { resolveCategory } from '../utils/categoryCalculator';
 
 
 const router = express.Router();
@@ -9,9 +10,13 @@ const router = express.Router();
 router.get('/gymnasts', async (req, res) => {
   try {
     const gymnasts = await Gymnast.find().populate('tournament').lean(); // Popular el torneo
+    const enrichedGymnasts = gymnasts.map((gymnast) => ({
+      ...gymnast,
+      category: resolveCategory(gymnast as any),
+    }));
     const filename = 'gymnasts.xlsx';
 
-    exportGymnastToExcel(gymnasts, filename); // Generar el archivo Excel
+    exportGymnastToExcel(enrichedGymnasts, filename); // Generar el archivo Excel
     res.download(filename, () => {
       require('fs').unlinkSync(filename); // Limpiar el archivo después de la descarga
     });

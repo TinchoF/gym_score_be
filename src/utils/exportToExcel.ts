@@ -21,7 +21,7 @@ export const exportGymnastToExcel = (data: any[], filename: string) => {
     return {
       Nombre: gymnast.name,
       Género: gymnast.gender,
-      'Fecha de Nacimiento': new Date(gymnast.birthDate).toLocaleDateString('es-ES'),
+      'Fecha de Nacimiento': gymnast.birthDate ? new Date(gymnast.birthDate).toLocaleDateString('es-ES') : '',
       Nivel: gymnast.level,
       Categoría: gymnast.category,
       Grupo: gymnast.group || '',

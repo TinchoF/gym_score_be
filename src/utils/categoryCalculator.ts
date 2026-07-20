@@ -39,3 +39,22 @@ export function calculateCategory(birthDate: Date | string, gender: 'F' | 'M'): 
   }
 }
 
+/**
+ * Punto único de resolución de la categoría de un gimnasta.
+ * Si hay birthDate, siempre se recalcula desde ahí (fuente de verdad).
+ * Si no hay birthDate, se usa la categoría cargada manualmente.
+ * Todo lugar del backend que necesite mostrar/exportar la categoría de un
+ * gimnasta debe pasar por esta función en lugar de leer birthDate/category
+ * por separado, para que un cambio de regla de negocio solo requiera tocar acá.
+ */
+export function resolveCategory(gymnast: {
+  birthDate?: Date | string | null;
+  gender: 'F' | 'M' | string;
+  category?: string | null;
+}): string {
+  if (gymnast.birthDate) {
+    return calculateCategory(gymnast.birthDate, gymnast.gender as 'F' | 'M');
+  }
+  return gymnast.category || '';
+}
+

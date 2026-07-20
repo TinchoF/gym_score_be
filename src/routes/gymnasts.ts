@@ -5,11 +5,11 @@ import mongoose from 'mongoose';
 import Rotation from '../models/Rotation';
 import ScoringConfig from '../models/ScoringConfig';
 import { authenticateToken } from '../middlewares/authMiddleware';
-import { calculateCategory } from '../utils/categoryCalculator';
+import { resolveCategory } from '../utils/categoryCalculator';
 import { logAudit } from '../utils/auditLogger';
 import logger from '../utils/logger';
 import { validate } from '../middlewares/errorHandler';
-import { createGymnastSchema, updateGymnastSchema, bulkUpdateTournamentsSchema, bulkClearTournamentsSchema } from '../schemas/gymnast.schema';
+import { createGymnastSchema, updateGymnastSchema, bulkUpdateTournamentsSchema, bulkClearTournamentsSchema, isCategoryValidForGender } from '../schemas/gymnast.schema';
 
 const MIN_BIRTH_YEAR = new Date().getFullYear() - 100;
 
@@ -59,14 +59,10 @@ router.get('/', async (req, res) => {
 
     const gymnasts = await Gymnast.find(filters);
 
-    const enrichedGymnasts = gymnasts.map((gymnast) => {
-      const category = calculateCategory(gymnast.birthDate as Date, gymnast.gender as 'F' | 'M');
-
-      return {
-        ...gymnast.toObject(),
-        category, // Agregamos la categoría calculada al resultado
-      };
-    });
+    const enrichedGymnasts = gymnasts.map((gymnast) => ({
+      ...gymnast.toObject(),
+      category: resolveCategory(gymnast as any),
+    }));
 
     res.json(enrichedGymnasts);
   } catch (error) {
@@ -82,8 +78,12 @@ router.post('/', validate(createGymnastSchema), async (req, res) => {
   try {
     const { birthDate, level, gender } = req.body;
 
-    const birthDateError = validateBirthDate(birthDate);
-    if (birthDateError) return res.status(400).json({ error: birthDateError });
+    // birthDate y category son mutuamente sustituibles (uno de los dos, validado por el
+    // schema); solo validamos el formato/rango de fecha cuando efectivamente se envía.
+    if (birthDate) {
+      const birthDateError = validateBirthDate(birthDate);
+      if (birthDateError) return res.status(400).json({ error: birthDateError });
+    }
 
     const levelGenderError = await validateLevelAndGender(level, gender);
     if (levelGenderError) return res.status(400).json({ error: levelGenderError });
@@ -258,20 +258,40 @@ router.put('/:id', validate(updateGymnastSchema), async (req, res) => {
       return res.status(400).json({ error: 'ID de gimnasta no válido' });
     }
 
-    const { birthDate, level, gender } = req.body;
+    const { birthDate, category, level, gender } = req.body;
 
     if (birthDate) {
       const birthDateError = validateBirthDate(birthDate);
       if (birthDateError) return res.status(400).json({ error: birthDateError });
     }
 
-    if (level || gender) {
-      const existing = await Gymnast.findById(id).lean();
+    let existing: any = null;
+    if (level || gender || birthDate !== undefined || category !== undefined) {
+      existing = await Gymnast.findById(id).lean();
       if (!existing) return res.status(404).json({ error: 'Gimnasta no encontrado' });
+    }
+
+    if (level || gender) {
       const resolvedLevel = level ?? existing.level;
       const resolvedGender = gender ?? existing.gender;
       const levelGenderError = await validateLevelAndGender(resolvedLevel, resolvedGender);
       if (levelGenderError) return res.status(400).json({ error: levelGenderError });
+    }
+
+    // Si se toca birthDate y/o category, validar que el estado resultante siga teniendo
+    // al menos uno de los dos (ej. no permitir limpiar birthDate sin cargar category).
+    if (birthDate !== undefined || category !== undefined) {
+      const resolvedBirthDate = birthDate !== undefined ? birthDate : existing.birthDate;
+      const resolvedCategory = category !== undefined ? category : existing.category;
+      if (!resolvedBirthDate && !resolvedCategory) {
+        return res.status(400).json({ error: 'Debe indicar la fecha de nacimiento o la categoría' });
+      }
+      if (resolvedCategory && !resolvedBirthDate) {
+        const resolvedGender = gender ?? existing.gender;
+        if (!isCategoryValidForGender(resolvedCategory, resolvedGender)) {
+          return res.status(400).json({ error: 'La categoría no es válida para el género seleccionado' });
+        }
+      }
     }
 
     // Crear un objeto de actualización a partir del cuerpo de la solicitud
@@ -397,7 +417,7 @@ router.get('/by-rotation', async (req, res) => {
     // Combinar gimnastas con su rotación correspondiente y calcular categoría
     const results = gymnasts.map(gymnast => {
       const rotation = rotations.find(rot => rot.gymnast.toString() === gymnast._id.toString());
-      const category = calculateCategory(gymnast.birthDate as unknown as Date, gymnast.gender as 'F' | 'M');
+      const category = resolveCategory(gymnast as any);
       
       // Find turno for this specific tournament
       const enrollment = (gymnast as any).tournaments?.find(

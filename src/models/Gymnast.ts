@@ -17,7 +17,10 @@ const TournamentEnrollmentSchema = new mongoose.Schema({
 const GymnastSchema = new mongoose.Schema({
   name: { type: String, required: true },
   gender: { type: String, required: true },
-  birthDate: { type: Date, required: true },
+  // Uno de los dos es requerido (validado en el schema Zod / rutas): birthDate permite
+  // calcular la categoría automáticamente; category se usa cuando no se conoce la fecha.
+  birthDate: { type: Date, required: false },
+  category: { type: String, required: false },
   level: { type: String, required: true }, // Nivel general (GAF) o nivel default (GAM)
   // Niveles por aparato para GAM (opcional)
   apparatusLevels: { type: [ApparatusLevelSchema], required: false, default: [] },
