@@ -98,6 +98,9 @@ router.get('/', async (req, res) => {
     // Agrupar por gimnasta + aparato + tournament y calcular el puntaje final
     const grouped: Record<string, any> = {};
     rawScores.forEach((s: any) => {
+      // Skip orphaned scores whose gymnast was deleted (lookup finds nothing)
+      if (!s.gymnast || !s.gymnast._id) return;
+
       // Use optional chaining for tournament because it might be null now
       const tournamentId = s.tournament?._id || 'unknown';
       const key = `${s.gymnast._id}_${s.apparatus}_${tournamentId}`;
