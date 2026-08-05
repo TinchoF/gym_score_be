@@ -7,7 +7,7 @@ import AuditLog from '../models/AuditLog';
 import { Types } from 'mongoose';
 
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'ACTIVATE' | 'DEACTIVATE';
-export type EntityType = 'gymnast' | 'judge' | 'admin' | 'tournament' | 'institution' | 'score';
+export type EntityType = 'gymnast' | 'judge' | 'admin' | 'tournament' | 'institution' | 'score' | 'scoringConfig';
 
 interface AuditLogParams {
   action: AuditAction;

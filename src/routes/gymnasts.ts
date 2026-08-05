@@ -481,67 +481,90 @@ router.get('/groups', async (req, res) => {
   }
 });
 
-// Get all gymnasts with incompatible gender-level combinations
+// Get all gymnasts with incompatible gender-level combinations (or levels that
+// don't match any active config at all — orphaned levels, previously ignored here)
 router.get('/incompatible', async (req, res) => {
   try {
     const institutionId = (req as any).user.institutionId;
-    
+    const userRole = (req as any).user.role;
+    const allInstitutions = req.query.allInstitutions === 'true';
+
+    if (allInstitutions && userRole !== 'super-admin') {
+      return res.status(403).json({ error: 'Solo super-admin puede ver todas las instituciones' });
+    }
+
     // Import ScoringConfig model
     const ScoringConfig = (await import('../models/ScoringConfig')).default;
-    
+
     // Get all active scoring configs
     const configs = await ScoringConfig.find({ active: true }).lean();
     logger.info(`Found ${configs.length} active scoring configs`);
-    
+
     // Debug: Log first config to check structure
     if (configs.length > 0) {
       logger.debug('Sample config:', JSON.stringify(configs[0]));
     }
-    
-    // Get all gymnasts for this institution
-    const gymnasts = await Gymnast.find({ institution: institutionId }).lean();
-    logger.info(`Found ${gymnasts.length} gymnasts for institution ${institutionId}`);
-    
-    // Find incompatible gymnasts
+
+    // Get all gymnasts (scoped to the caller's institution, unless a super-admin
+    // explicitly asked for the cross-institution view)
+    const gymnastQuery = allInstitutions ? {} : { institution: institutionId };
+    const gymnastsQueryBuilder = Gymnast.find(gymnastQuery);
+    if (allInstitutions) {
+      gymnastsQueryBuilder.populate('institution', 'name');
+    }
+    const gymnasts = await gymnastsQueryBuilder.lean();
+    logger.info(`Found ${gymnasts.length} gymnasts${allInstitutions ? ' across all institutions' : ` for institution ${institutionId}`}`);
+
+    // Find incompatible/orphaned gymnasts
     const incompatible = gymnasts.filter(gymnast => {
       const config = configs.find((c: any) => c.level === gymnast.level);
-      
-      // If level not configured, skip (not incompatible, just not configured)
+
+      // Nivel sin ninguna config activa: antes se ignoraba silenciosamente
+      // ("not incompatible, just not configured"), pero eso dejaba pasar
+      // exactamente el tipo de gimnasta huérfano que causó el bug de
+      // agrupamiento (cae al DEFAULT_CONFIG sin restricción de aparatos).
+      // Ahora se trata como un caso más a corregir.
       if (!config) {
         logger.debug(`Gymnast ${gymnast.name} has unconfigured level: ${gymnast.level}`);
-        return false;
+        return true;
       }
-      
+
       const gymnastGender = gymnast.gender === 'M' ? 'GAM' : 'GAF';
       const configGender = (config as any).gender;
-      
+
       // If config doesn't have gender field yet (pre-migration), assume it supports both
       if (!configGender || !Array.isArray(configGender)) {
         logger.debug(`Config for level ${gymnast.level} has no gender field or is not an array:`, configGender);
         return false;
       }
-      
+
       // Check if the config's gender array includes the gymnast's gender
       const isCompatible = configGender.includes(gymnastGender);
-      
+
       if (!isCompatible) {
         logger.info(`⚠️  Incompatible: Gymnast ${gymnast.name} (${gymnastGender}) with level ${gymnast.level} (supports: ${configGender.join(', ')})`);
       }
-      
+
       return !isCompatible;
     });
-    
+
     logger.info(`Found ${incompatible.length} incompatible gymnasts`);
-    
-    // Group by level and gender
-    const grouped = incompatible.reduce((acc: any, gymnast) => {
-      const key = `${gymnast.level}-${gymnast.gender}`;
+
+    // Group by level, gender, (and institution, in the cross-institution view)
+    const grouped = incompatible.reduce((acc: any, gymnast: any) => {
+      const institutionId = allInstitutions
+        ? String(gymnast.institution?._id || gymnast.institution || '')
+        : null;
+      const key = `${gymnast.level}-${gymnast.gender}${institutionId ? `-${institutionId}` : ''}`;
       if (!acc[key]) {
         acc[key] = {
           level: gymnast.level,
           gender: gymnast.gender,
           count: 0,
-          gymnasts: []
+          gymnasts: [],
+          ...(allInstitutions
+            ? { institution: { _id: institutionId, name: gymnast.institution?.name } }
+            : {}),
         };
       }
       acc[key].count++;
@@ -552,10 +575,10 @@ router.get('/incompatible', async (req, res) => {
       });
       return acc;
     }, {});
-    
+
     const result = Object.values(grouped);
     logger.info(`Returning ${result.length} grouped incompatibilities`);
-    
+
     res.json(result);
   } catch (error) {
     logger.error('Error getting incompatible gymnasts:', error);

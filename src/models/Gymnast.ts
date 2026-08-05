@@ -21,7 +21,7 @@ const GymnastSchema = new mongoose.Schema({
   // calcular la categoría automáticamente; category se usa cuando no se conoce la fecha.
   birthDate: { type: Date, required: false },
   category: { type: String, required: false },
-  level: { type: String, required: true }, // Nivel general (GAF) o nivel default (GAM)
+  level: { type: String, required: true, trim: true }, // Nivel general (GAF) o nivel default (GAM)
   // Niveles por aparato para GAM (opcional)
   apparatusLevels: { type: [ApparatusLevelSchema], required: false, default: [] },
   // Multi-tournament support: array de inscripciones con pago, turno y grupo por torneo

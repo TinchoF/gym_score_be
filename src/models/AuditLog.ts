@@ -7,7 +7,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IAuditLog extends Document {
   action: string;
-  entityType: 'gymnast' | 'judge' | 'admin' | 'tournament' | 'institution' | 'score';
+  entityType: 'gymnast' | 'judge' | 'admin' | 'tournament' | 'institution' | 'score' | 'scoringConfig';
   entityId: mongoose.Types.ObjectId;
   performedBy: mongoose.Types.ObjectId;
   performedByRole: 'admin' | 'super-admin' | 'judge';
@@ -26,7 +26,7 @@ const AuditLogSchema: Schema = new Schema({
   entityType: { 
     type: String, 
     required: true,
-    enum: ['gymnast', 'judge', 'admin', 'tournament', 'institution', 'score']
+    enum: ['gymnast', 'judge', 'admin', 'tournament', 'institution', 'score', 'scoringConfig']
   },
   entityId: { type: Schema.Types.ObjectId, required: true },
   performedBy: { type: Schema.Types.ObjectId, required: true },
