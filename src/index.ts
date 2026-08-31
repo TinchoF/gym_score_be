@@ -19,6 +19,7 @@ import jwt from 'jsonwebtoken';
 import tournamentRoutes from './routes/tournamentRoutes';
 import institutionRoutes from './routes/institution';
 import offlineRoutes from './routes/offlineRoutes';
+import offlineLocalRoutes from './routes/offlineLocalRoutes';
 import { offlineLockGuard } from './middlewares/offlineLock';
 import logger from './utils/logger';
 import errorHandler from './middlewares/errorHandler';
@@ -173,6 +174,7 @@ app.use(express.json());
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/public-judges', publicJudgesRouter);
 app.use('/api/institution', institutionRoutes);
+app.use('/api/offline-local', offlineLocalRoutes); // Modo Sede: solo activo con OFFLINE_MODE + secreto
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas

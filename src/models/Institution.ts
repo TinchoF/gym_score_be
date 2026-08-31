@@ -7,6 +7,9 @@ export interface IOfflineMode {
   byUserName?: string;
   deviceLabel?: string;
   lastSyncAt?: Date;
+  // Only meaningful on the LOCAL (laptop) copy: the `generatedAt` of the bundle that
+  // was imported, used as the divergence baseline when syncing back. Harmless in the cloud.
+  bundleGeneratedAt?: Date;
 }
 
 export interface IInstitution extends Document {
@@ -45,6 +48,7 @@ const InstitutionSchema: Schema = new Schema({
     byUserName: { type: String },
     deviceLabel: { type: String },
     lastSyncAt: { type: Date },
+    bundleGeneratedAt: { type: Date },
   },
 }, { timestamps: true });
 

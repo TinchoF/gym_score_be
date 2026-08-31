@@ -32,7 +32,7 @@ export const BUNDLE_VERSION = 1;
 const SYNCED_COLLECTIONS = ['tournaments', 'gymnasts', 'judges', 'scores', 'rotations'] as const;
 type SyncedCollection = (typeof SYNCED_COLLECTIONS)[number];
 
-interface InstitutionBundle {
+export interface InstitutionBundle {
   meta: {
     bundleVersion: number;
     generatedAt: string;
@@ -190,5 +190,89 @@ export async function applyInstitutionSync(
     ok: true,
     applied,
     toReview: { deletions },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// LOCAL side (runs inside OFFLINE_MODE on the laptop) — load a bundle into the
+// local DB, and dump the current local state as a sync payload.
+// ---------------------------------------------------------------------------
+
+/** Wipe this institution's data locally and load the bundle. Destructive by design. */
+export async function importBundleToLocal(bundle: InstitutionBundle): Promise<{ institutionId: string; counts: Record<string, number> }> {
+  const institutionId = bundle.meta.institutionId;
+  const tournamentIds = (bundle.tournaments ?? []).map((t: any) => t._id);
+
+  // Replace institution-scoped collections wholesale.
+  await Promise.all([
+    Tournament.deleteMany({ institution: institutionId }),
+    Gymnast.deleteMany({ institution: institutionId }),
+    Judge.deleteMany({ institution: institutionId }),
+    Score.deleteMany({ institution: institutionId }),
+    Rotation.deleteMany({ tournament: { $in: tournamentIds } }),
+    Admin.deleteMany({ institution: institutionId }),
+  ]);
+
+  const insertMany = async (model: any, docs: any[]) => {
+    if (docs?.length) await model.insertMany(docs, { ordered: false });
+    return docs?.length ?? 0;
+  };
+
+  const counts: Record<string, number> = {
+    tournaments: await insertMany(Tournament, bundle.tournaments),
+    gymnasts: await insertMany(Gymnast, bundle.gymnasts),
+    judges: await insertMany(Judge, bundle.judges),
+    scores: await insertMany(Score, bundle.scores),
+    rotations: await insertMany(Rotation, bundle.rotations),
+    admins: await insertMany(Admin, bundle.admins),
+  };
+
+  // ScoringConfig is global/read-only — refresh the local copy.
+  await ScoringConfig.deleteMany({});
+  counts.scoringConfigs = await insertMany(ScoringConfig, bundle.scoringConfigs);
+
+  // Upsert the institution doc and record the bundle baseline for the divergence guard.
+  const { offlineMode: _drop, ...instBody } = sanitizeDoc(bundle.institution).body;
+  await Institution.updateOne(
+    { _id: institutionId },
+    {
+      $set: {
+        ...instBody,
+        offlineMode: {
+          ...(bundle.institution?.offlineMode ?? {}),
+          active: true,
+          bundleGeneratedAt: new Date(bundle.meta.generatedAt),
+        },
+      },
+    },
+    { upsert: true },
+  );
+
+  return { institutionId, counts };
+}
+
+/** Dump the local institution state as a payload ready for POST .../sync. */
+export async function exportLocalSnapshot(institutionId: string): Promise<SyncPayload & { meta: { generatedAt: string; institutionId: string } }> {
+  const institution = await Institution.findById(institutionId).select('offlineMode').lean();
+  const generatedAt =
+    (institution as any)?.offlineMode?.bundleGeneratedAt?.toISOString?.() ??
+    new Date(0).toISOString();
+
+  const tournaments = await Tournament.find({ institution: institutionId }).lean();
+  const tournamentIds = tournaments.map((t: any) => t._id);
+  const [gymnasts, judges, scores, rotations] = await Promise.all([
+    Gymnast.find({ institution: institutionId }).lean(),
+    Judge.find({ institution: institutionId }).lean(),
+    Score.find({ institution: institutionId }).lean(),
+    Rotation.find({ tournament: { $in: tournamentIds } }).lean(),
+  ]);
+
+  return {
+    meta: { generatedAt, institutionId: String(institutionId) },
+    tournaments,
+    gymnasts,
+    judges,
+    scores,
+    rotations,
   };
 }
