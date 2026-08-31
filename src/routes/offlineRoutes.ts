@@ -44,7 +44,7 @@ router.post('/institutions/:id/lock', requireInstitutionAccess, async (req, res)
     const user = (req as any).user;
     const admin = await Admin.findById(user.id).select('username').lean();
 
-    (institution as any).offlineMode = {
+    const offlineMode = {
       active: true,
       since: new Date(),
       byUserId: user.id,
@@ -52,9 +52,10 @@ router.post('/institutions/:id/lock', requireInstitutionAccess, async (req, res)
       deviceLabel: deviceLabel || undefined,
       lastSyncAt: undefined,
     };
-    await institution.save();
+    // updateOne (no save()) para no disparar la validación del doc parcial.
+    await Institution.updateOne({ _id: id }, { $set: { offlineMode } });
 
-    return res.json({ ok: true, offlineMode: (institution as any).offlineMode });
+    return res.json({ ok: true, offlineMode });
   } catch (err) {
     console.error('[offline] lock error:', err);
     return res.status(500).json({ error: 'Error al bloquear la institución' });
@@ -68,16 +69,12 @@ router.post('/institutions/:id/lock', requireInstitutionAccess, async (req, res)
 router.post('/institutions/:id/unlock', requireInstitutionAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const institution = await Institution.findById(id).select('offlineMode');
-    if (!institution) return res.status(404).json({ error: 'Institución no encontrada' });
+    const exists = await Institution.exists({ _id: id });
+    if (!exists) return res.status(404).json({ error: 'Institución no encontrada' });
 
-    (institution as any).offlineMode = {
-      ...((institution as any).offlineMode?.toObject?.() ?? (institution as any).offlineMode ?? {}),
-      active: false,
-    };
-    await institution.save();
+    await Institution.updateOne({ _id: id }, { $set: { 'offlineMode.active': false } });
 
-    return res.json({ ok: true, offlineMode: (institution as any).offlineMode });
+    return res.json({ ok: true });
   } catch (err) {
     console.error('[offline] unlock error:', err);
     return res.status(500).json({ error: 'Error al desbloquear la institución' });
