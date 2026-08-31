@@ -10,7 +10,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { importBundleToLocal, exportLocalSnapshot } from '../services/offlineSync';
 
 const router = express.Router();
-router.use(express.json({ limit: '200mb' }));
+// El body-parser con límite alto se aplica en index.ts al montar este router.
 
 router.use((req: Request, res: Response, next: NextFunction) => {
   if (process.env.OFFLINE_MODE !== 'true') {

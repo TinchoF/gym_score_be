@@ -9,10 +9,8 @@ import Admin from '../models/Admin';
 import { buildInstitutionBundle, applyInstitutionSync } from '../services/offlineSync';
 
 const router = express.Router();
-
-// The bundle/sync payloads carry a whole institution's data — override the global
-// body-parser limit for this router only.
-router.use(express.json({ limit: '200mb' }));
+// Nota: el body-parser con límite alto se aplica en index.ts al montar este router
+// (tiene que correr ANTES del express.json() global de 100kb).
 
 /** super-admin, or an admin belonging to the target institution */
 async function requireInstitutionAccess(req: Request, res: Response, next: NextFunction) {

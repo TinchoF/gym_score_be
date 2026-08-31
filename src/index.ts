@@ -168,20 +168,24 @@ app.use(cors({
 }));
 
 // Middleware
+
+// Modo Sede: los payloads de bundle/sync llevan una institución entera, así que
+// estas rutas necesitan su propio body-parser con límite alto ANTES del global
+// (100kb). `/api/offline` va acá arriba (con authenticateToken inline) para quedar
+// además por delante del `offlineLockGuard`. Ver docs/MODO_SEDE.md.
+const bigJson = express.json({ limit: '200mb' });
+app.use('/api/offline', authenticateToken, bigJson, offlineRoutes);
+app.use('/api/offline-local', bigJson, offlineLocalRoutes); // gateado por OFFLINE_MODE + secreto adentro
+
 app.use(express.json());
 
 // Public Routes
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/public-judges', publicJudgesRouter);
 app.use('/api/institution', institutionRoutes);
-app.use('/api/offline-local', offlineLocalRoutes); // Modo Sede: solo activo con OFFLINE_MODE + secreto
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas
-
-// Modo Sede bundle/sync/lock — must be BEFORE the lock guard so it can operate on
-// a locked institution.
-app.use('/api/offline', offlineRoutes);
 
 // From here down, writes are blocked for users of an institution in Modo Sede.
 app.use(offlineLockGuard);
