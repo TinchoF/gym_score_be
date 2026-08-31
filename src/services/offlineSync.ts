@@ -108,12 +108,28 @@ export interface ConflictEntry {
  */
 export type ConflictResolution = 'overwrite' | 'keepCloud';
 
+export interface DocRef {
+  _id: string;
+  label: string;
+  changedFields?: string[];
+}
+
+export interface CollectionChanges {
+  created: DocRef[];
+  updated: DocRef[];
+  unchanged: number;
+  deleted: DocRef[]; // en la nube, no en el snapshot local — NO se borran, solo se reportan
+}
+
 export interface SyncResult {
   ok: boolean;
   conflicts?: ConflictEntry[];
   resolution?: ConflictResolution;
   keptCloud?: ConflictEntry[];
-  applied?: Record<SyncedCollection, { upserted: number }>;
+  /** Diff real: qué se creó / actualizó / quedó igual, por colección. */
+  changes?: Record<SyncedCollection, CollectionChanges>;
+  /** true si no se creó, actualizó ni hay bajas pendientes en ninguna colección. */
+  upToDate?: boolean;
   toReview?: { deletions: Record<SyncedCollection, string[]> };
 }
 
@@ -126,13 +142,21 @@ function labelFor(col: SyncedCollection, doc: any): string {
   return doc.name ?? String(doc._id);
 }
 
-/** Campos con valor distinto entre el doc de la nube y el del snapshot local. */
+/**
+ * Campos que cambiarían en la nube si escribiéramos el doc local encima.
+ * Solo comparamos los campos que TIENE el doc local (es lo que el `$set` toca);
+ * un campo que solo está en la nube — típicamente un default que Mongoose agregó
+ * al insertar — no es una diferencia real.
+ */
 function diffFields(cloudDoc: any, localDoc: any): string[] {
-  const keys = new Set([...Object.keys(cloudDoc || {}), ...Object.keys(localDoc || {})]);
+  if (!localDoc) {
+    // borrado localmente pero cambiado en la nube → conflicto sobre todos los campos
+    return Object.keys(cloudDoc || {}).filter((k) => !IGNORE_FIELDS.has(k));
+  }
   const changed: string[] = [];
-  for (const k of keys) {
+  for (const k of Object.keys(localDoc)) {
     if (IGNORE_FIELDS.has(k)) continue;
-    if (JSON.stringify(cloudDoc?.[k]) !== JSON.stringify(localDoc?.[k])) changed.push(k);
+    if (JSON.stringify(cloudDoc?.[k]) !== JSON.stringify(localDoc[k])) changed.push(k);
   }
   return changed;
 }
@@ -193,17 +217,23 @@ export async function applyInstitutionSync(
   const scopeFilter = (col: SyncedCollection): Record<string, any> =>
     col === 'rotations' ? { tournament: { $in: allTournamentIds } } : { institution: institutionId };
 
-  // 1. Detectar conflictos: docs de la nube modificados después de nuestra línea base.
+  // Cargamos los docs de la nube una sola vez por colección y de ahí sacamos todo:
+  // conflictos, diff real (creado/actualizado/igual) y bajas.
+  const cloudByCol = new Map<SyncedCollection, Map<string, any>>();
+  for (const col of SYNCED_COLLECTIONS) {
+    const docs = await MODEL_BY_COLLECTION[col].find(scopeFilter(col)).lean();
+    cloudByCol.set(col, new Map(docs.map((d: any) => [String(d._id), d])));
+  }
+
+  // 1. Conflictos: doc de la nube con updatedAt posterior a la línea base Y contenido distinto.
   const conflicts: ConflictEntry[] = [];
   for (const col of SYNCED_COLLECTIONS) {
-    const model = MODEL_BY_COLLECTION[col];
-    const changed = await model.find({ ...scopeFilter(col), updatedAt: { $gt: baseline } }).lean();
-    if (!changed.length) continue;
     const localById = new Map(((payload[col] ?? []) as any[]).map((d) => [String(d._id), d]));
-    for (const cloudDoc of changed) {
-      const id = String(cloudDoc._id);
+    for (const [id, cloudDoc] of cloudByCol.get(col)!) {
+      if (!(cloudDoc.updatedAt && new Date(cloudDoc.updatedAt) > baseline)) continue;
       const localDoc = localById.get(id) ?? null;
       const fields = diffFields(cloudDoc, localDoc);
+      if (!fields.length) continue; // updatedAt se movió pero el contenido es igual → no es conflicto
       conflicts.push({
         collection: col,
         _id: id,
@@ -226,35 +256,51 @@ export async function applyInstitutionSync(
       ? new Set(conflicts.map((c) => `${c.collection}:${c._id}`))
       : new Set<string>();
 
-  // 2. Upsert inserts + updates. Idempotent; safe to re-run.
-  const applied = {} as Record<SyncedCollection, { upserted: number }>;
+  // 2. Diff real + upsert de lo que cambió.
+  const changes = {} as Record<SyncedCollection, CollectionChanges>;
   const deletions = {} as Record<SyncedCollection, string[]>;
 
   for (const col of SYNCED_COLLECTIONS) {
     const model = MODEL_BY_COLLECTION[col];
-    const allIncoming = (payload[col] ?? []) as any[];
-    const toUpsert = keepCloudIds.size
-      ? allIncoming.filter((d) => !keepCloudIds.has(`${col}:${String(d._id)}`))
-      : allIncoming;
+    const incoming = (payload[col] ?? []) as any[];
+    const incomingIds = new Set(incoming.map((d) => String(d._id)));
+    const cloudById = cloudByCol.get(col)!;
 
-    // Un solo bulkWrite en vez de N updateOne secuenciales — clave para no pasar
-    // el timeout de 30s de Heroku en torneos con miles de scores.
-    if (toUpsert.length) {
-      const ops = toUpsert.map((doc) => {
-        const { _id, body } = sanitizeDoc(doc);
-        return { updateOne: { filter: { _id }, update: { $set: body }, upsert: true } };
-      });
-      await model.bulkWrite(ops, { ordered: false });
+    const created: DocRef[] = [];
+    const updated: DocRef[] = [];
+    let unchanged = 0;
+    const ops: any[] = [];
+
+    for (const localDoc of incoming) {
+      const id = String(localDoc._id);
+      if (keepCloudIds.has(`${col}:${id}`)) { unchanged++; continue; }
+      const cloudDoc = cloudById.get(id);
+      const { _id, body } = sanitizeDoc(localDoc);
+      if (!cloudDoc) {
+        created.push({ _id: id, label: labelFor(col, localDoc) });
+        ops.push({ updateOne: { filter: { _id }, update: { $set: body }, upsert: true } });
+      } else {
+        const fields = diffFields(cloudDoc, localDoc);
+        if (fields.length) {
+          updated.push({ _id: id, label: labelFor(col, localDoc), changedFields: fields });
+          ops.push({ updateOne: { filter: { _id }, update: { $set: body } } });
+        } else {
+          unchanged++;
+        }
+      }
     }
-    applied[col] = { upserted: toUpsert.length };
 
-    // 3. Deletions — report only, never applied automatically. Un doc "keepCloud"
-    // sí está en el snapshot local, así que no cuenta como baja.
-    const presentIds = new Set(allIncoming.map((d) => String(d._id)));
-    const cloudDocs = await model.find(scopeFilter(col)).select('_id').lean();
-    deletions[col] = cloudDocs
-      .map((d: any) => String(d._id))
-      .filter((id: string) => !presentIds.has(id));
+    // Un solo bulkWrite con SOLO lo que cambió (evita mover updatedAt en docs iguales
+    // y el timeout de 30s de Heroku en torneos con miles de scores).
+    if (ops.length) await model.bulkWrite(ops, { ordered: false });
+
+    // 3. Bajas — solo se reportan, nunca se aplican.
+    const deleted: DocRef[] = [...cloudById.keys()]
+      .filter((id) => !incomingIds.has(id))
+      .map((id) => ({ _id: id, label: labelFor(col, cloudById.get(id)) }));
+    deletions[col] = deleted.map((d) => d._id);
+
+    changes[col] = { created, updated, unchanged, deleted };
   }
 
   // 4. Update lock metadata.
@@ -264,9 +310,14 @@ export async function applyInstitutionSync(
   }
   await Institution.updateOne({ _id: institutionId }, { $set: lockUpdate });
 
+  const upToDate = SYNCED_COLLECTIONS.every(
+    (col) => !changes[col].created.length && !changes[col].updated.length && !changes[col].deleted.length,
+  );
+
   return {
     ok: true,
-    applied,
+    changes,
+    upToDate,
     toReview: { deletions },
     ...(opts.conflictResolution ? { resolution: opts.conflictResolution } : {}),
     ...(keepCloudIds.size ? { keptCloud: conflicts } : {}),
