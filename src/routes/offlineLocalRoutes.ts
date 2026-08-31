@@ -7,6 +7,7 @@
  * See docs/MODO_SEDE.md.
  */
 import express, { Request, Response, NextFunction } from 'express';
+import Institution from '../models/Institution';
 import { importBundleToLocal, exportLocalSnapshot } from '../services/offlineSync';
 
 const router = express.Router();
@@ -35,6 +36,22 @@ router.post('/import', async (req, res) => {
   } catch (err: any) {
     console.error('[offline-local] import error:', err);
     return res.status(500).json({ error: err?.message || 'Error al importar el bundle' });
+  }
+});
+
+/**
+ * GET /api/offline-local/pending — instituciones cargadas localmente que todavía
+ * están en Modo Sede (jornada sin sincronizar). Funciona sin internet.
+ */
+router.get('/pending', async (_req, res) => {
+  try {
+    const list = await Institution.find({ 'offlineMode.active': true })
+      .select('name institutionCode offlineMode')
+      .lean();
+    return res.json(list);
+  } catch (err: any) {
+    console.error('[offline-local] pending error:', err);
+    return res.status(500).json({ error: err?.message || 'Error' });
   }
 });
 
