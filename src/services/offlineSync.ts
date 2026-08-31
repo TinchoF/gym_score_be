@@ -130,6 +130,14 @@ export async function applyInstitutionSync(
     throw new Error('payload.meta.generatedAt es requerido (timestamp del bundle original)');
   }
 
+  // Línea base para la guarda de divergencia: si ya hubo una sincronización previa,
+  // sus propios upserts dejaron `updatedAt` en todos los docs → hay que comparar
+  // contra ESA sincronización, no contra el bundle original. Si no, todo aparecería
+  // como divergencia en la segunda sync (bug real 2026-08-31).
+  const instDoc = await Institution.findById(institutionId).select('offlineMode').lean();
+  const lastSyncAt: Date | undefined = (instDoc as any)?.offlineMode?.lastSyncAt;
+  const baseline = lastSyncAt && lastSyncAt > generatedAt ? lastSyncAt : generatedAt;
+
   const tournamentsIn = payload.tournaments ?? [];
   const cloudTournamentIds = (await Tournament.find({ institution: institutionId }).select('_id').lean()).map((t: any) =>
     String(t._id),
@@ -141,12 +149,12 @@ export async function applyInstitutionSync(
   const scopeFilter = (col: SyncedCollection): Record<string, any> =>
     col === 'rotations' ? { tournament: { $in: allTournamentIds } } : { institution: institutionId };
 
-  // 1. Divergence guard — abort if the cloud changed after the bundle was generated.
+  // 1. Divergence guard — abort if the cloud changed after our baseline.
   const divergence: { collection: string; ids: string[] }[] = [];
   for (const col of SYNCED_COLLECTIONS) {
     const model = MODEL_BY_COLLECTION[col];
     const changed = await model
-      .find({ ...scopeFilter(col), updatedAt: { $gt: generatedAt } })
+      .find({ ...scopeFilter(col), updatedAt: { $gt: baseline } })
       .select('_id')
       .lean();
     if (changed.length) {
