@@ -170,6 +170,14 @@ app.use(cors({
 
 // Middleware
 
+// El API devuelve JSON que depende del token y de x-institution-id → nunca cachear.
+// Sin esto el browser reusaba la respuesta de /api/gymnasts de otra institución al
+// cambiar de scope (misma URL, sin Vary).
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // Modo Sede: servir el frontend empaquetado ANTES de cualquier cosa de /api y del
 // authenticateToken global (si no, GET / devuelve "Access denied"). express.static
 // resuelve los assets; el catch-all sirve index.html para las rutas de React.

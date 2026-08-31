@@ -10,13 +10,15 @@ import mongoose from 'mongoose';
  *
  * Montar DESPUÉS de authenticateToken y de `/api/offline`, ANTES del offlineLockGuard.
  */
-export function superAdminScope(req: Request, _res: Response, next: NextFunction) {
+export function superAdminScope(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
   if (user?.role === 'super-admin') {
     const override = req.headers['x-institution-id'];
     if (typeof override === 'string' && mongoose.Types.ObjectId.isValid(override)) {
       user.institutionId = override;
     }
+    // Diagnóstico: visible en el Network tab del browser.
+    res.set('x-scope', String(user.institutionId || 'ninguna'));
   }
   next();
 }
