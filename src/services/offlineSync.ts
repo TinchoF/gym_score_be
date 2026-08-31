@@ -435,6 +435,20 @@ export async function importBundleToLocal(bundle: InstitutionBundle): Promise<{ 
   return { institutionId, counts };
 }
 
+/** Borra del DB local todos los datos de una institución (tras finalizar / forzar desbloqueo). */
+export async function discardLocalInstitution(institutionId: string): Promise<void> {
+  const tournamentIds = (await Tournament.find({ institution: institutionId }).select('_id').lean()).map((t: any) => t._id);
+  await Promise.all([
+    Tournament.deleteMany({ institution: institutionId }),
+    Gymnast.deleteMany({ institution: institutionId }),
+    Judge.deleteMany({ institution: institutionId }),
+    Score.deleteMany({ institution: institutionId }),
+    Rotation.deleteMany({ tournament: { $in: tournamentIds } }),
+    Admin.deleteMany({ institution: institutionId }),
+    Institution.deleteOne({ _id: institutionId }),
+  ]);
+}
+
 /** Dump the local institution state as a payload ready for POST .../sync. */
 export async function exportLocalSnapshot(institutionId: string): Promise<SyncPayload & { meta: { generatedAt: string; institutionId: string } }> {
   const institution = await Institution.findById(institutionId).select('offlineMode').lean();

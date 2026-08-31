@@ -8,7 +8,7 @@
  */
 import express, { Request, Response, NextFunction } from 'express';
 import Institution from '../models/Institution';
-import { importBundleToLocal, exportLocalSnapshot, toTransport, fromTransport } from '../services/offlineSync';
+import { importBundleToLocal, exportLocalSnapshot, discardLocalInstitution, toTransport, fromTransport } from '../services/offlineSync';
 
 const router = express.Router();
 // El body-parser con límite alto se aplica en index.ts al montar este router.
@@ -52,6 +52,19 @@ router.get('/pending', async (_req, res) => {
   } catch (err: any) {
     console.error('[offline-local] pending error:', err);
     return res.status(500).json({ error: err?.message || 'Error' });
+  }
+});
+
+/** POST /api/offline-local/discard { institutionId } — borra la copia local de una institución. */
+router.post('/discard', async (req, res) => {
+  try {
+    const institutionId = String(req.body?.institutionId || '');
+    if (!institutionId) return res.status(400).json({ error: 'institutionId es requerido' });
+    await discardLocalInstitution(institutionId);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[offline-local] discard error:', err);
+    return res.status(500).json({ error: err?.message || 'Error al descartar' });
   }
 });
 
