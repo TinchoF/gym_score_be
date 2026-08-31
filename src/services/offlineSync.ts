@@ -29,7 +29,7 @@ export const BUNDLE_VERSION = 1;
 // Collections that travel back from the laptop and get upserted into the cloud.
 // Order matters only for readability. Admins / Institution / ScoringConfig are
 // intentionally excluded from the write-back (see docs/MODO_SEDE.md).
-const SYNCED_COLLECTIONS = ['tournaments', 'gymnasts', 'judges', 'scores', 'rotations'] as const;
+export const SYNCED_COLLECTIONS = ['tournaments', 'gymnasts', 'judges', 'scores', 'rotations'] as const;
 type SyncedCollection = (typeof SYNCED_COLLECTIONS)[number];
 
 export interface InstitutionBundle {
@@ -123,6 +123,7 @@ export interface CollectionChanges {
 
 export interface SyncResult {
   ok: boolean;
+  dryRun?: boolean;
   conflicts?: ConflictEntry[];
   resolution?: ConflictResolution;
   keptCloud?: ConflictEntry[];
@@ -142,21 +143,48 @@ function labelFor(col: SyncedCollection, doc: any): string {
   return doc.name ?? String(doc._id);
 }
 
+/** Serializa igual que un round-trip JSON: Date→ISO, ObjectId→hex, borra undefined. */
+function normalize(v: any): any {
+  return v === undefined ? null : JSON.parse(JSON.stringify(v));
+}
+
+/** Stringify canónico: ordena las claves recursivamente (insensible al orden). */
+function canonical(v: any): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
+}
+
+const isEmptyish = (v: any) =>
+  v === null ||
+  v === undefined ||
+  v === '' ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+
+/** true si el valor de un campo es "el mismo" a efectos de sincronización. */
+function fieldEqual(a: any, b: any): boolean {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (canonical(na) === canonical(nb)) return true;
+  // ausente ≈ vacío: un default que Mongoose materializó de un lado no es un cambio real.
+  return isEmptyish(na) && isEmptyish(nb);
+}
+
 /**
  * Campos que cambiarían en la nube si escribiéramos el doc local encima.
- * Solo comparamos los campos que TIENE el doc local (es lo que el `$set` toca);
- * un campo que solo está en la nube — típicamente un default que Mongoose agregó
- * al insertar — no es una diferencia real.
+ * Compara ambos lados normalizados (Date/ObjectId/orden de claves) y tratando
+ * "ausente ≈ vacío", así un round-trip JSON o un default de Mongoose no cuentan.
  */
 function diffFields(cloudDoc: any, localDoc: any): string[] {
   if (!localDoc) {
-    // borrado localmente pero cambiado en la nube → conflicto sobre todos los campos
     return Object.keys(cloudDoc || {}).filter((k) => !IGNORE_FIELDS.has(k));
   }
+  const keys = new Set([...Object.keys(cloudDoc || {}), ...Object.keys(localDoc)]);
   const changed: string[] = [];
-  for (const k of Object.keys(localDoc)) {
+  for (const k of keys) {
     if (IGNORE_FIELDS.has(k)) continue;
-    if (JSON.stringify(cloudDoc?.[k]) !== JSON.stringify(localDoc[k])) changed.push(k);
+    if (!fieldEqual(cloudDoc?.[k], localDoc[k])) changed.push(k);
   }
   return changed;
 }
@@ -191,7 +219,7 @@ function sanitizeDoc(doc: any): { _id: any; body: Record<string, any> } {
 export async function applyInstitutionSync(
   institutionId: string,
   payload: SyncPayload,
-  opts: { finalize?: boolean; conflictResolution?: ConflictResolution } = {},
+  opts: { finalize?: boolean; conflictResolution?: ConflictResolution; dryRun?: boolean } = {},
 ): Promise<SyncResult> {
   const generatedAt = payload.meta?.generatedAt ? new Date(payload.meta.generatedAt) : null;
   if (!generatedAt || Number.isNaN(generatedAt.getTime())) {
@@ -245,8 +273,9 @@ export async function applyInstitutionSync(
     }
   }
 
-  // Sin resolución elegida → abortar y que el usuario decida.
-  if (conflicts.length && !opts.conflictResolution) {
+  // Sin resolución elegida → abortar y que el usuario decida (en dry-run seguimos:
+  // es solo un preview, devolvemos los conflictos junto con el diff).
+  if (conflicts.length && !opts.conflictResolution && !opts.dryRun) {
     return { ok: false, conflicts };
   }
 
@@ -292,7 +321,7 @@ export async function applyInstitutionSync(
 
     // Un solo bulkWrite con SOLO lo que cambió (evita mover updatedAt en docs iguales
     // y el timeout de 30s de Heroku en torneos con miles de scores).
-    if (ops.length) await model.bulkWrite(ops, { ordered: false });
+    if (ops.length && !opts.dryRun) await model.bulkWrite(ops, { ordered: false });
 
     // 3. Bajas — solo se reportan, nunca se aplican.
     const deleted: DocRef[] = [...cloudById.keys()]
@@ -303,22 +332,24 @@ export async function applyInstitutionSync(
     changes[col] = { created, updated, unchanged, deleted };
   }
 
-  // 4. Update lock metadata.
-  const lockUpdate: Record<string, any> = { 'offlineMode.lastSyncAt': new Date() };
-  if (opts.finalize) {
-    lockUpdate['offlineMode.active'] = false;
-  }
-  await Institution.updateOne({ _id: institutionId }, { $set: lockUpdate });
-
   const upToDate = SYNCED_COLLECTIONS.every(
     (col) => !changes[col].created.length && !changes[col].updated.length && !changes[col].deleted.length,
   );
 
+  // 4. Update lock metadata (salvo dry-run).
+  if (!opts.dryRun) {
+    const lockUpdate: Record<string, any> = { 'offlineMode.lastSyncAt': new Date() };
+    if (opts.finalize) lockUpdate['offlineMode.active'] = false;
+    await Institution.updateOne({ _id: institutionId }, { $set: lockUpdate });
+  }
+
   return {
     ok: true,
+    dryRun: opts.dryRun || undefined,
     changes,
     upToDate,
     toReview: { deletions },
+    ...(conflicts.length && !opts.conflictResolution ? { conflicts } : {}),
     ...(opts.conflictResolution ? { resolution: opts.conflictResolution } : {}),
     ...(keepCloudIds.size ? { keptCloud: conflicts } : {}),
   };

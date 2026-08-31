@@ -112,7 +112,7 @@ router.get('/institutions/:id/bundle', requireInstitutionAccess, async (req, res
 router.post('/institutions/:id/sync', requireInstitutionAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const { finalize, conflictResolution, ...payload } = req.body ?? {};
+    const { finalize, conflictResolution, dryRun, ...payload } = req.body ?? {};
 
     if (conflictResolution && !['overwrite', 'keepCloud'].includes(conflictResolution)) {
       return res.status(400).json({ error: 'conflictResolution inválido' });
@@ -130,6 +130,7 @@ router.post('/institutions/:id/sync', requireInstitutionAccess, async (req, res)
     const result = await applyInstitutionSync(id, payload, {
       finalize: !!finalize,
       conflictResolution: conflictResolution as any,
+      dryRun: !!dryRun,
     });
 
     if (!result.ok) {
