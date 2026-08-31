@@ -41,6 +41,13 @@ router.post('/login', async (req, res) => {
       if (!institution || !institution.isActive) {
         return res.status(403).json({ error: 'Institución desactivada. Contacte al administrador.' });
       }
+      // Servidor local: solo se puede entrar a una institución que ESTÁ en Modo Sede acá.
+      if (process.env.OFFLINE_MODE === 'true' && !(institution as any).offlineMode?.active) {
+        return res.status(403).json({
+          error: 'Esta institución no está en modo sede en esta laptop.',
+          code: 'NOT_IN_OFFLINE_MODE',
+        });
+      }
     }
 
     // Si todo es correcto, generar el token incluyendo institutionId
