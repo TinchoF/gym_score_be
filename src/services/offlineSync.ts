@@ -92,11 +92,55 @@ export interface SyncPayload {
   rotations?: any[];
 }
 
+export interface ConflictEntry {
+  collection: SyncedCollection;
+  _id: string;
+  label: string;
+  changedFields: string[];
+  cloud: Record<string, any>;
+  local: Record<string, any> | null;
+}
+
+/**
+ * - undefined  → abortar y devolver los conflictos
+ * - 'overwrite'  → la sede gana: pisar la nube también en los docs en conflicto
+ * - 'keepCloud'  → la nube gana en los docs en conflicto: sincronizar todo lo demás
+ */
+export type ConflictResolution = 'overwrite' | 'keepCloud';
+
 export interface SyncResult {
   ok: boolean;
-  divergence?: { collection: string; ids: string[] }[];
+  conflicts?: ConflictEntry[];
+  resolution?: ConflictResolution;
+  keptCloud?: ConflictEntry[];
   applied?: Record<SyncedCollection, { upserted: number }>;
   toReview?: { deletions: Record<SyncedCollection, string[]> };
+}
+
+const IGNORE_FIELDS = new Set(['_id', '__v', 'createdAt', 'updatedAt', 'institution']);
+
+function labelFor(col: SyncedCollection, doc: any): string {
+  if (!doc) return '(borrado localmente)';
+  if (col === 'scores') return `Puntaje · ${doc.apparatus ?? '?'}`;
+  if (col === 'rotations') return `Rotación · ${doc.apparatus ?? '?'} #${doc.order ?? '?'}`;
+  return doc.name ?? String(doc._id);
+}
+
+/** Campos con valor distinto entre el doc de la nube y el del snapshot local. */
+function diffFields(cloudDoc: any, localDoc: any): string[] {
+  const keys = new Set([...Object.keys(cloudDoc || {}), ...Object.keys(localDoc || {})]);
+  const changed: string[] = [];
+  for (const k of keys) {
+    if (IGNORE_FIELDS.has(k)) continue;
+    if (JSON.stringify(cloudDoc?.[k]) !== JSON.stringify(localDoc?.[k])) changed.push(k);
+  }
+  return changed;
+}
+
+function pick(doc: any, fields: string[]): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const f of fields) out[f] = doc ? doc[f] : undefined;
+  return out;
 }
 
 const MODEL_BY_COLLECTION: Record<SyncedCollection, any> = {
@@ -123,7 +167,7 @@ function sanitizeDoc(doc: any): { _id: any; body: Record<string, any> } {
 export async function applyInstitutionSync(
   institutionId: string,
   payload: SyncPayload,
-  opts: { finalize?: boolean } = {},
+  opts: { finalize?: boolean; conflictResolution?: ConflictResolution } = {},
 ): Promise<SyncResult> {
   const generatedAt = payload.meta?.generatedAt ? new Date(payload.meta.generatedAt) : null;
   if (!generatedAt || Number.isNaN(generatedAt.getTime())) {
@@ -149,21 +193,38 @@ export async function applyInstitutionSync(
   const scopeFilter = (col: SyncedCollection): Record<string, any> =>
     col === 'rotations' ? { tournament: { $in: allTournamentIds } } : { institution: institutionId };
 
-  // 1. Divergence guard — abort if the cloud changed after our baseline.
-  const divergence: { collection: string; ids: string[] }[] = [];
+  // 1. Detectar conflictos: docs de la nube modificados después de nuestra línea base.
+  const conflicts: ConflictEntry[] = [];
   for (const col of SYNCED_COLLECTIONS) {
     const model = MODEL_BY_COLLECTION[col];
-    const changed = await model
-      .find({ ...scopeFilter(col), updatedAt: { $gt: baseline } })
-      .select('_id')
-      .lean();
-    if (changed.length) {
-      divergence.push({ collection: col, ids: changed.map((d: any) => String(d._id)) });
+    const changed = await model.find({ ...scopeFilter(col), updatedAt: { $gt: baseline } }).lean();
+    if (!changed.length) continue;
+    const localById = new Map(((payload[col] ?? []) as any[]).map((d) => [String(d._id), d]));
+    for (const cloudDoc of changed) {
+      const id = String(cloudDoc._id);
+      const localDoc = localById.get(id) ?? null;
+      const fields = diffFields(cloudDoc, localDoc);
+      conflicts.push({
+        collection: col,
+        _id: id,
+        label: labelFor(col, localDoc ?? cloudDoc),
+        changedFields: fields,
+        cloud: pick(cloudDoc, fields),
+        local: localDoc ? pick(localDoc, fields) : null,
+      });
     }
   }
-  if (divergence.length) {
-    return { ok: false, divergence };
+
+  // Sin resolución elegida → abortar y que el usuario decida.
+  if (conflicts.length && !opts.conflictResolution) {
+    return { ok: false, conflicts };
   }
+
+  // 'keepCloud': no tocar los docs en conflicto; sincronizar todo lo demás.
+  const keepCloudIds =
+    opts.conflictResolution === 'keepCloud'
+      ? new Set(conflicts.map((c) => `${c.collection}:${c._id}`))
+      : new Set<string>();
 
   // 2. Upsert inserts + updates. Idempotent; safe to re-run.
   const applied = {} as Record<SyncedCollection, { upserted: number }>;
@@ -171,25 +232,29 @@ export async function applyInstitutionSync(
 
   for (const col of SYNCED_COLLECTIONS) {
     const model = MODEL_BY_COLLECTION[col];
-    const incoming = (payload[col] ?? []) as any[];
-    const incomingIds = new Set(incoming.map((d) => String(d._id)));
+    const allIncoming = (payload[col] ?? []) as any[];
+    const toUpsert = keepCloudIds.size
+      ? allIncoming.filter((d) => !keepCloudIds.has(`${col}:${String(d._id)}`))
+      : allIncoming;
 
     // Un solo bulkWrite en vez de N updateOne secuenciales — clave para no pasar
     // el timeout de 30s de Heroku en torneos con miles de scores.
-    if (incoming.length) {
-      const ops = incoming.map((doc) => {
+    if (toUpsert.length) {
+      const ops = toUpsert.map((doc) => {
         const { _id, body } = sanitizeDoc(doc);
         return { updateOne: { filter: { _id }, update: { $set: body }, upsert: true } };
       });
       await model.bulkWrite(ops, { ordered: false });
     }
-    applied[col] = { upserted: incoming.length };
+    applied[col] = { upserted: toUpsert.length };
 
-    // 3. Deletions — report only, never applied automatically.
+    // 3. Deletions — report only, never applied automatically. Un doc "keepCloud"
+    // sí está en el snapshot local, así que no cuenta como baja.
+    const presentIds = new Set(allIncoming.map((d) => String(d._id)));
     const cloudDocs = await model.find(scopeFilter(col)).select('_id').lean();
     deletions[col] = cloudDocs
       .map((d: any) => String(d._id))
-      .filter((id: string) => !incomingIds.has(id));
+      .filter((id: string) => !presentIds.has(id));
   }
 
   // 4. Update lock metadata.
@@ -203,6 +268,8 @@ export async function applyInstitutionSync(
     ok: true,
     applied,
     toReview: { deletions },
+    ...(opts.conflictResolution ? { resolution: opts.conflictResolution } : {}),
+    ...(keepCloudIds.size ? { keptCloud: conflicts } : {}),
   };
 }
 

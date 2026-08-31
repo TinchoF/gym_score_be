@@ -104,13 +104,19 @@ router.get('/institutions/:id/bundle', requireInstitutionAccess, async (req, res
 
 /**
  * POST /api/offline/institutions/:id/sync
- * Body: SyncPayload + { finalize?: boolean }
+ * Body: SyncPayload + { finalize?: boolean, conflictResolution?: 'overwrite' | 'keepCloud' }
  * Upserts the laptop snapshot back into the cloud. Deletions are reported, not applied.
+ * Si hay conflictos (docs de la nube tocados durante la jornada) y no viene
+ * conflictResolution, responde 409 CONFLICTS con el detalle para que el usuario elija.
  */
 router.post('/institutions/:id/sync', requireInstitutionAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const { finalize, ...payload } = req.body ?? {};
+    const { finalize, conflictResolution, ...payload } = req.body ?? {};
+
+    if (conflictResolution && !['overwrite', 'keepCloud'].includes(conflictResolution)) {
+      return res.status(400).json({ error: 'conflictResolution inválido' });
+    }
 
     const institution = await Institution.findById(id).select('offlineMode');
     if (!institution) return res.status(404).json({ error: 'Institución no encontrada' });
@@ -121,12 +127,15 @@ router.post('/institutions/:id/sync', requireInstitutionAccess, async (req, res)
       });
     }
 
-    const result = await applyInstitutionSync(id, payload, { finalize: !!finalize });
+    const result = await applyInstitutionSync(id, payload, {
+      finalize: !!finalize,
+      conflictResolution: conflictResolution as any,
+    });
 
     if (!result.ok) {
       return res.status(409).json({
-        error: 'Se detectaron cambios en la nube posteriores al bundle. Revisá la divergencia antes de sincronizar.',
-        code: 'DIVERGENCE',
+        error: 'Se hicieron cambios en la nube durante la jornada. Elegí cómo resolverlos.',
+        code: 'CONFLICTS',
         ...result,
       });
     }
