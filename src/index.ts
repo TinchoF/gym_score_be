@@ -21,6 +21,7 @@ import institutionRoutes from './routes/institution';
 import offlineRoutes from './routes/offlineRoutes';
 import offlineLocalRoutes from './routes/offlineLocalRoutes';
 import { offlineLockGuard } from './middlewares/offlineLock';
+import { superAdminScope } from './middlewares/superAdminScope';
 import logger from './utils/logger';
 import errorHandler from './middlewares/errorHandler';
 import rateLimit from 'express-rate-limit';
@@ -75,7 +76,7 @@ const io = new Server(server, {
     },
     methods: ['GET', 'POST'], // Métodos permitidos para Socket.IO
     credentials: true, // Permitir envío de cookies y headers de autenticación
-    allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-institution-id'], // Headers permitidos
   }
 });
 
@@ -199,6 +200,10 @@ app.use('/api/institution', institutionRoutes);
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas
+
+// El super-admin elige institución en el header de la web (x-institution-id) →
+// se comporta como admin de esa institución para el scoping de datos.
+app.use(superAdminScope);
 
 // From here down, writes are blocked for users of an institution in Modo Sede.
 app.use(offlineLockGuard);
