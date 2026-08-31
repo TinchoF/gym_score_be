@@ -8,7 +8,7 @@
  */
 import express, { Request, Response, NextFunction } from 'express';
 import Institution from '../models/Institution';
-import { importBundleToLocal, exportLocalSnapshot } from '../services/offlineSync';
+import { importBundleToLocal, exportLocalSnapshot, toTransport, fromTransport } from '../services/offlineSync';
 
 const router = express.Router();
 // El body-parser con límite alto se aplica en index.ts al montar este router.
@@ -27,7 +27,7 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 /** POST /api/offline-local/import — wipe + load a bundle into the local DB. */
 router.post('/import', async (req, res) => {
   try {
-    const bundle = req.body;
+    const bundle: any = fromTransport(req.body); // Extended JSON → tipos BSON reales
     if (!bundle?.meta?.institutionId) {
       return res.status(400).json({ error: 'Bundle inválido (falta meta.institutionId)' });
     }
@@ -61,7 +61,7 @@ router.get('/export', async (req, res) => {
     const institutionId = String(req.query.institutionId || '');
     if (!institutionId) return res.status(400).json({ error: 'institutionId es requerido' });
     const payload = await exportLocalSnapshot(institutionId);
-    return res.json(payload);
+    return res.json(toTransport(payload)); // Extended JSON — preserva ObjectId/Date
   } catch (err: any) {
     console.error('[offline-local] export error:', err);
     return res.status(500).json({ error: err?.message || 'Error al exportar el estado local' });

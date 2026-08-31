@@ -15,6 +15,7 @@
  * forced unlock).
  */
 
+import { EJSON } from 'bson';
 import Institution from '../models/Institution';
 import Tournament from '../models/Tournament';
 import Gymnast from '../models/Gymnast';
@@ -25,6 +26,16 @@ import Admin from '../models/Admin';
 import ScoringConfig from '../models/ScoringConfig';
 
 export const BUNDLE_VERSION = 1;
+
+/**
+ * El bundle / snapshot viaja como Extended JSON (bson): preserva ObjectId y Date
+ * exactos a través de un `JSON.stringify`/`parse`. Así el import es un espejo
+ * byte-exacto de la nube (sin re-castear, sin re-validar, sin defaults de Mongoose)
+ * y el diff no tiene falsos positivos por diferencias de tipo. Las rutas serializan
+ * al salir y deserializan al entrar; el servicio trabaja siempre con tipos BSON.
+ */
+export const toTransport = (obj: any) => EJSON.serialize(obj, { relaxed: true });
+export const fromTransport = (obj: any) => EJSON.deserialize(obj, { relaxed: true });
 
 // Collections that travel back from the laptop and get upserted into the cloud.
 // Order matters only for readability. Admins / Institution / ScoringConfig are
@@ -375,23 +386,34 @@ export async function importBundleToLocal(bundle: InstitutionBundle): Promise<{ 
     Admin.deleteMany({ institution: institutionId }),
   ]);
 
-  const insertMany = async (model: any, docs: any[]) => {
-    if (docs?.length) await model.insertMany(docs, { ordered: false });
-    return docs?.length ?? 0;
+  // Insert crudo por el driver: sin validación, sin defaults, tipos exactos (el
+  // bundle ya viene con ObjectId/Date reales gracias a Extended JSON). El local es
+  // un espejo de la nube; si la nube lo aceptó, acá entra igual.
+  const rawInsert = async (model: any, docs: any[]) => {
+    if (!docs?.length) return 0;
+    try {
+      const res = await model.collection.insertMany(docs, { ordered: false });
+      return res.insertedCount ?? docs.length;
+    } catch (err: any) {
+      // ordered:false → inserta lo que puede; logueamos lo que falló
+      const inserted = err?.result?.insertedCount ?? err?.insertedCount ?? 0;
+      console.error(`[import] ${model.modelName}: ${docs.length - inserted}/${docs.length} fallaron`, err?.message);
+      return inserted;
+    }
   };
 
   const counts: Record<string, number> = {
-    tournaments: await insertMany(Tournament, bundle.tournaments),
-    gymnasts: await insertMany(Gymnast, bundle.gymnasts),
-    judges: await insertMany(Judge, bundle.judges),
-    scores: await insertMany(Score, bundle.scores),
-    rotations: await insertMany(Rotation, bundle.rotations),
-    admins: await insertMany(Admin, bundle.admins),
+    tournaments: await rawInsert(Tournament, bundle.tournaments),
+    gymnasts: await rawInsert(Gymnast, bundle.gymnasts),
+    judges: await rawInsert(Judge, bundle.judges),
+    scores: await rawInsert(Score, bundle.scores),
+    rotations: await rawInsert(Rotation, bundle.rotations),
+    admins: await rawInsert(Admin, bundle.admins),
   };
 
   // ScoringConfig is global/read-only — refresh the local copy.
   await ScoringConfig.deleteMany({});
-  counts.scoringConfigs = await insertMany(ScoringConfig, bundle.scoringConfigs);
+  counts.scoringConfigs = await rawInsert(ScoringConfig, bundle.scoringConfigs);
 
   // Upsert the institution doc and record the bundle baseline for the divergence guard.
   const { offlineMode: _drop, ...instBody } = sanitizeDoc(bundle.institution).body;

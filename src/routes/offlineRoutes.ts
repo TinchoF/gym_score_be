@@ -6,7 +6,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import Institution from '../models/Institution';
 import Admin from '../models/Admin';
-import { buildInstitutionBundle, applyInstitutionSync } from '../services/offlineSync';
+import { buildInstitutionBundle, applyInstitutionSync, toTransport, fromTransport } from '../services/offlineSync';
 
 const router = express.Router();
 // Nota: el body-parser con límite alto se aplica en index.ts al montar este router
@@ -92,7 +92,7 @@ router.post('/institutions/:id/unlock', requireInstitutionAccess, async (req, re
 router.get('/institutions/:id/bundle', requireInstitutionAccess, async (req, res) => {
   try {
     const bundle = await buildInstitutionBundle(req.params.id);
-    return res.json(bundle);
+    return res.json(toTransport(bundle)); // Extended JSON — preserva ObjectId/Date
   } catch (err: any) {
     console.error('[offline] bundle error:', err);
     if (err?.message === 'Institución no encontrada') {
@@ -127,7 +127,7 @@ router.post('/institutions/:id/sync', requireInstitutionAccess, async (req, res)
       });
     }
 
-    const result = await applyInstitutionSync(id, payload, {
+    const result = await applyInstitutionSync(id, fromTransport(payload) as any, {
       finalize: !!finalize,
       conflictResolution: conflictResolution as any,
       dryRun: !!dryRun,
