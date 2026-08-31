@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import gymnastRoutes from './routes/gymnasts';
@@ -17,11 +18,19 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import tournamentRoutes from './routes/tournamentRoutes';
 import institutionRoutes from './routes/institution';
+import offlineRoutes from './routes/offlineRoutes';
+import { offlineLockGuard } from './middlewares/offlineLock';
 import logger from './utils/logger';
 import errorHandler from './middlewares/errorHandler';
 import rateLimit from 'express-rate-limit';
 
 dotenv.config();
+
+// "Modo Sede": when true, this process is the local server running on a laptop in
+// the venue (inside the Electron app). It talks to a local MongoDB, serves the
+// built frontend, and never enforces the online read-only lock. See docs/MODO_SEDE.md.
+const OFFLINE_MODE = process.env.OFFLINE_MODE === 'true';
+const OFFLINE_MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/gymscore';
 
 // Validate critical environment variables
 if (!process.env.JWT_SECRET) {
@@ -29,7 +38,7 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-if (!process.env.MONGO_URI) {
+if (!process.env.MONGO_URI && !OFFLINE_MODE) {
   console.error('CRITICAL ERROR: MONGO_URI is not defined in environment variables');
   process.exit(1);
 }
@@ -46,16 +55,18 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       'https://gymnastic-score-fe-ca9e6d777188.herokuapp.com'
     ];
 
+// In Modo Sede the server is reached over the local Wi-Fi from many judge devices
+// on arbitrary LAN IPs, so any origin is allowed. Online it stays locked down.
+const isOriginAllowed = (origin?: string) => {
+  if (!origin) return true;
+  if (OFFLINE_MODE) return true;
+  return allowedOrigins.includes(origin.replace(/\/$/, ''));
+};
+
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      // Permitir requests sin origin (como mobile apps o Postman)
-      if (!origin) return callback(null, true);
-      
-      // Remover trailing slash si existe
-      const normalizedOrigin = origin.replace(/\/$/, '');
-      
-      if (allowedOrigins.includes(normalizedOrigin)) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -75,7 +86,8 @@ app.set('trust proxy', 1); // Trust Heroku's proxy so rate limiters use real cli
 // Rate limiting for authentication routes
 const authLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes default
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // 100 requests per window
+  // Modo Sede: many judges hitting the same laptop, no abuse risk on a private LAN.
+  max: OFFLINE_MODE ? 100000 : parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
   message: 'Demasiados intentos de autenticación, por favor intente más tarde',
   standardHeaders: true,
   legacyHeaders: false,
@@ -143,13 +155,7 @@ io.on('connection', (socket) => {
 // Configuración de CORS para Express
 app.use(cors({
   origin: (origin, callback) => {
-    // Permitir requests sin origin (como mobile apps o Postman)
-    if (!origin) return callback(null, true);
-    
-    // Remover trailing slash si existe
-    const normalizedOrigin = origin.replace(/\/$/, '');
-    
-    if (allowedOrigins.includes(normalizedOrigin)) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -170,6 +176,14 @@ app.use('/api/institution', institutionRoutes);
 
 // Protected Routes
 app.use(authenticateToken);  // Este middleware protege las siguientes rutas
+
+// Modo Sede bundle/sync/lock — must be BEFORE the lock guard so it can operate on
+// a locked institution.
+app.use('/api/offline', offlineRoutes);
+
+// From here down, writes are blocked for users of an institution in Modo Sede.
+app.use(offlineLockGuard);
+
 app.use('/api/judges', judgeRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/gymnasts', gymnastRoutes);
@@ -179,14 +193,25 @@ app.use('/api/config', configRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/rotations', rotationRoutes);
 
+// Modo Sede: serve the bundled frontend so the laptop hosts UI + API on one origin.
+if (OFFLINE_MODE && process.env.FRONTEND_BUILD_PATH) {
+  const buildPath = path.resolve(process.env.FRONTEND_BUILD_PATH);
+  app.use(express.static(buildPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+  logger.info(`Modo Sede: serving frontend from ${buildPath}`);
+}
+
 // Global error handler - must be last
 app.use(errorHandler);
 
-mongoose.connect(process.env.MONGO_URI, {
+mongoose.connect(OFFLINE_MODE ? OFFLINE_MONGO_URI : process.env.MONGO_URI!, {
   serverSelectionTimeoutMS: 10000, // Tiempo de espera: 10 segundos
 })
   .then(() => {
-    logger.info('Connected to MongoDB');
+    logger.info(`Connected to MongoDB${OFFLINE_MODE ? ' (Modo Sede — local)' : ''}`);
     server.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
     });

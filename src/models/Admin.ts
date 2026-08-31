@@ -6,7 +6,7 @@ const AdminSchema = new mongoose.Schema({
   password: { type: String, required: true },
   institution: { type: mongoose.Schema.Types.ObjectId, ref: 'Institution', required: function() { return this.role !== 'super-admin'; } },
   role: { type: String, enum: ['admin', 'super-admin'], default: 'admin', required: true },
-});
+}, { timestamps: true }); // timestamps needed for the offline-sync divergence guard
 
 // Método para comparar las contraseñas
 AdminSchema.methods.comparePassword = function (candidatePassword: string) {

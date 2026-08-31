@@ -17,6 +17,7 @@
           "test": "jest",
           "test:watch": "jest --watch",
           "reconcile-levels": "ts-node scripts/reconcile-orphaned-levels.ts",
+          "test:offline-sync": "ts-node scripts/test-offline-sync.ts",
           "predeploy": "npm run build",
           "deploy": "npm run predeploy && npm run start",
           "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --no-audit --no-fund && npm run build"
@@ -41,6 +42,7 @@
           "@types/node": "18.19.19",
           "jest": "^30.2.0",
           "list": "^2.0.19",
+          "mongodb-memory-server": "^11.2.0",
           "ts-jest": "^29.4.6",
           "ts-node": "^10.9.2",
           "ts-node-dev": "^2.0.0",

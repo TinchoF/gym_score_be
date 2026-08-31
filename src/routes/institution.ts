@@ -21,6 +21,25 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// Institución del usuario autenticado (incluye estado de Modo Sede)
+router.get('/me', authenticateToken, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    if (!user.institutionId) {
+      return res.status(404).json({ error: 'El usuario no tiene institución asignada' });
+    }
+    const institution = await Institution.findById(user.institutionId)
+      .select('name institutionCode isActive offlineMode')
+      .lean();
+    if (!institution) {
+      return res.status(404).json({ error: 'Institución no encontrada' });
+    }
+    res.json(institution);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener la institución' });
+  }
+});
+
 // Obtener institución por código (GET público pero con datos limitados)
 // Solo devuelve datos mínimos necesarios para el login
 router.get('/by-code/:code', async (req, res) => {

@@ -27,7 +27,7 @@ const JudgeSchema = new mongoose.Schema({
   // Flag para indicar que la contraseña ya está hasheada (para migración)
   passwordHashed: { type: Boolean, default: false },
   isHeadJudge: { type: Boolean, default: false },
-}, { strict: false });
+}, { strict: false, timestamps: true });
 
 // Pre-save hook para encriptar contraseñas
 JudgeSchema.pre('save', async function(next) {

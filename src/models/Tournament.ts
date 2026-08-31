@@ -24,7 +24,7 @@ const TournamentSchema = new mongoose.Schema({
   turnoConfig: { type: [TurnoConfigSchema], required: false, default: [] },
   // Configuration for scoring method by level
   levelScoringConfig: { type: [LevelScoringConfigSchema], required: false, default: [] },
-});
+}, { timestamps: true }); // timestamps needed for the offline-sync divergence guard
 
 export default mongoose.model('Tournament', TournamentSchema);
 

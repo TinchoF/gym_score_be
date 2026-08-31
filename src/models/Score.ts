@@ -23,7 +23,7 @@ const ScoreSchema = new mongoose.Schema({
   // Metadatos de la configuración utilizada al momento de puntuar
   scoringMethod: { type: String, enum: ['deductions', 'start_value', 'start_value_bonus', 'fig_code'], required: false },
   level: { type: String, required: false }, // Nombre del nivel usado para este aparato
-});
+}, { timestamps: true }); // timestamps needed for the offline-sync divergence guard
 
 // Ensure a single score per judge/gymnast/apparatus/tournament/turno/institution
 ScoreSchema.index({ judge: 1, gymnast: 1, apparatus: 1, tournament: 1, turno: 1, institution: 1 }, { unique: true, sparse: true });

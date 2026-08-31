@@ -5,6 +5,6 @@ const RotationSchema = new mongoose.Schema({
   apparatus: { type: String, required: true },
   tournament: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', required: false },
   order: { type: Number, required: true},
-});
+}, { timestamps: true }); // timestamps needed for the offline-sync divergence guard
 
 export default mongoose.model('Rotation', RotationSchema);
