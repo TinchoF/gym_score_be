@@ -70,7 +70,8 @@ export async function buildInstitutionBundle(institutionId: string): Promise<Ins
     Gymnast.find({ institution: institutionId }).lean(),
     Judge.find({ institution: institutionId }).lean(),
     Score.find({ institution: institutionId }).lean(),
-    Admin.find({ institution: institutionId }).lean(),
+    // Admins de la institución + los super-admin (para que puedan loguear en la sede).
+    Admin.find({ $or: [{ institution: institutionId }, { role: 'super-admin' }] }).lean(),
     ScoringConfig.find({}).lean(), // global collection — read-only reference
   ]);
 
@@ -376,7 +377,9 @@ export async function importBundleToLocal(bundle: InstitutionBundle): Promise<{ 
   const institutionId = bundle.meta.institutionId;
   const tournamentIds = (bundle.tournaments ?? []).map((t: any) => t._id);
 
-  // Replace institution-scoped collections wholesale.
+  // Replace institution-scoped collections wholesale. Admins NO: se hace upsert por
+  // _id abajo, porque el bundle trae también los super-admin (sin institución) y con
+  // varias instituciones importadas no hay que pisarlos.
   await Promise.all([
     Tournament.deleteMany({ institution: institutionId }),
     Gymnast.deleteMany({ institution: institutionId }),
@@ -402,13 +405,25 @@ export async function importBundleToLocal(bundle: InstitutionBundle): Promise<{ 
     }
   };
 
+  // Admins: replaceOne upsert por _id (idempotente con varias instituciones + super-admin).
+  const upsertAdmins = async (docs: any[]) => {
+    if (!docs?.length) return 0;
+    const ops = docs.map((d) => ({ replaceOne: { filter: { _id: d._id }, replacement: d, upsert: true } }));
+    try {
+      await Admin.collection.bulkWrite(ops, { ordered: false });
+    } catch (err: any) {
+      console.error('[import] Admin upsert:', err?.message);
+    }
+    return docs.length;
+  };
+
   const counts: Record<string, number> = {
     tournaments: await rawInsert(Tournament, bundle.tournaments),
     gymnasts: await rawInsert(Gymnast, bundle.gymnasts),
     judges: await rawInsert(Judge, bundle.judges),
     scores: await rawInsert(Score, bundle.scores),
     rotations: await rawInsert(Rotation, bundle.rotations),
-    admins: await rawInsert(Admin, bundle.admins),
+    admins: await upsertAdmins(bundle.admins),
   };
 
   // ScoringConfig is global/read-only — refresh the local copy.
