@@ -169,6 +169,19 @@ app.use(cors({
 
 // Middleware
 
+// Modo Sede: servir el frontend empaquetado ANTES de cualquier cosa de /api y del
+// authenticateToken global (si no, GET / devuelve "Access denied"). express.static
+// resuelve los assets; el catch-all sirve index.html para las rutas de React.
+if (OFFLINE_MODE && process.env.FRONTEND_BUILD_PATH) {
+  const buildPath = path.resolve(process.env.FRONTEND_BUILD_PATH);
+  app.use(express.static(buildPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+  logger.info(`Modo Sede: serving frontend from ${buildPath}`);
+}
+
 // Modo Sede: los payloads de bundle/sync llevan una institución entera, así que
 // estas rutas necesitan su propio body-parser con límite alto ANTES del global
 // (100kb). `/api/offline` va acá arriba (con authenticateToken inline) para quedar
@@ -198,17 +211,6 @@ app.use('/api/export', exportRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/rotations', rotationRoutes);
-
-// Modo Sede: serve the bundled frontend so the laptop hosts UI + API on one origin.
-if (OFFLINE_MODE && process.env.FRONTEND_BUILD_PATH) {
-  const buildPath = path.resolve(process.env.FRONTEND_BUILD_PATH);
-  app.use(express.static(buildPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next();
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
-  logger.info(`Modo Sede: serving frontend from ${buildPath}`);
-}
 
 // Global error handler - must be last
 app.use(errorHandler);

@@ -166,9 +166,14 @@ export async function applyInstitutionSync(
     const incoming = (payload[col] ?? []) as any[];
     const incomingIds = new Set(incoming.map((d) => String(d._id)));
 
-    for (const doc of incoming) {
-      const { _id, body } = sanitizeDoc(doc);
-      await model.updateOne({ _id }, { $set: body }, { upsert: true });
+    // Un solo bulkWrite en vez de N updateOne secuenciales — clave para no pasar
+    // el timeout de 30s de Heroku en torneos con miles de scores.
+    if (incoming.length) {
+      const ops = incoming.map((doc) => {
+        const { _id, body } = sanitizeDoc(doc);
+        return { updateOne: { filter: { _id }, update: { $set: body }, upsert: true } };
+      });
+      await model.bulkWrite(ops, { ordered: false });
     }
     applied[col] = { upserted: incoming.length };
 
