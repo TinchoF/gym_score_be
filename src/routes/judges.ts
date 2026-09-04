@@ -81,6 +81,29 @@ router.put('/:id', validate(updateJudgeSchema), async (req, res) => {
   }
 });
 
+// Delete a judge by ID
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const institutionId = (req as any).user.institutionId;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'ID no válido' });
+    }
+
+    const judge = await Judge.findOne({ _id: id, institution: institutionId });
+    if (!judge) {
+      return res.status(404).json({ error: 'Juez no encontrado' });
+    }
+
+    await Judge.findByIdAndDelete(id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error al eliminar juez:', error);
+    res.status(500).json({ error: 'Error eliminando juez' });
+  }
+});
+
 // Get judges by tournament and turno
 router.get('/by-tournament-turno', async (req, res) => {
   try {
