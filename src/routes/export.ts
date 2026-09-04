@@ -9,7 +9,11 @@ const router = express.Router();
 // Export gymnasts to Excel
 router.get('/gymnasts', async (req, res) => {
   try {
-    const gymnasts = await Gymnast.find().populate('tournament').lean(); // Popular el torneo
+    // Scopeado a la institución del usuario (req.user.institutionId ya resuelve el
+    // override del super-admin vía header) — sin esto se exportaban gimnastas de
+    // TODAS las instituciones a cualquier admin autenticado.
+    const institutionId = (req as any).user.institutionId;
+    const gymnasts = await Gymnast.find({ institution: institutionId }).populate('tournament').lean(); // Popular el torneo
     const enrichedGymnasts = gymnasts.map((gymnast) => ({
       ...gymnast,
       category: resolveCategory(gymnast as any),

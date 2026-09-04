@@ -41,7 +41,9 @@ export const createGymnastSchema = z.object({
   tournaments: z.array(TournamentEnrollmentSchema).optional(),
   coach: z.string().max(100).optional(),
   club: z.string().max(100).optional(),
-  institution: z.string().min(1, 'La institución es requerida'),
+  // No se toma del body: la ruta siempre la deriva de req.user.institutionId (ver
+  // routes/gymnasts.ts), igual que jueces y torneos. Se acepta si viene pero se ignora.
+  institution: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (!data.birthDate && !data.category) {
     ctx.addIssue({

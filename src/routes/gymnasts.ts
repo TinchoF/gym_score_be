@@ -88,8 +88,12 @@ router.post('/', validate(createGymnastSchema), async (req, res) => {
     const levelGenderError = await validateLevelAndGender(level, gender);
     if (levelGenderError) return res.status(400).json({ error: levelGenderError });
 
-    // Extraer datos del cuerpo de la solicitud
-    const { _id, tournamentId, turno, payment, tournaments: tournamentsData, ...gymnastData } = req.body;
+    // Extraer datos del cuerpo de la solicitud. `institution` se ignora si vino en el
+    // body: se deriva siempre de req.user.institutionId (igual que jueces/torneos), así
+    // no depende de que el frontend la mande bien y un admin no puede spoofear otra institución.
+    const { _id, tournamentId, turno, payment, tournaments: tournamentsData, institution: _bodyInstitution, ...gymnastData } = req.body;
+    const institutionId = (req as any).user.institutionId;
+    gymnastData.institution = institutionId;
 
     // Handle tournaments array - either from direct array or legacy single tournament
     if (tournamentsData && Array.isArray(tournamentsData)) {

@@ -8,11 +8,13 @@ export const ApparatusAssignmentSchema = z.object({
 });
 
 // Create judge schema
+// `institution` no se toma del body: la ruta siempre la deriva de req.user.institutionId
+// (que para el super-admin ya resuelve la institución elegida en el header). No se declara
+// acá para no exigir un campo que el handler ignora.
 export const createJudgeSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder 100 caracteres'),
   password: z.string().min(4, 'La contraseña debe tener al menos 4 caracteres'),
   apparatusAssignments: z.array(ApparatusAssignmentSchema).optional(),
-  institution: z.string().min(1, 'La institución es requerida'),
 });
 
 // Update judge schema
