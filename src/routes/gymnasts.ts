@@ -10,6 +10,7 @@ import { logAudit } from '../utils/auditLogger';
 import logger from '../utils/logger';
 import { validate } from '../middlewares/errorHandler';
 import { createGymnastSchema, updateGymnastSchema, bulkUpdateTournamentsSchema, bulkClearTournamentsSchema, isCategoryValidForGender } from '../schemas/gymnast.schema';
+import { getGenderFilterForApparatus } from '../utils/apparatusGender';
 
 const MIN_BIRTH_YEAR = new Date().getFullYear() - 100;
 
@@ -395,15 +396,9 @@ router.get('/by-rotation', async (req, res) => {
       tournaments: { $elemMatch: enrollmentMatch },
     };
 
-    // Filtrar por género según aparato
-    const maleOnlyApparatuses = ["Anillas", "Arzones", "Barra", "Paralelas"];
-    const femaleOnlyApparatuses = ["Viga", "Barras Asimétricas"];
-    
-    if (maleOnlyApparatuses.includes(apparatus as string)) {
-        filter.gender = 'M';
-    } else if (femaleOnlyApparatuses.includes(apparatus as string)) {
-        filter.gender = 'F';
-    }
+    // Filtrar por género según aparato (Suelo/Salto son compartidos y no restringen)
+    const genderFilter = getGenderFilterForApparatus(apparatus as string);
+    if (genderFilter) filter.gender = genderFilter;
 
     // Buscar gimnastas por torneo, grupo y turno (si se proporciona)
     const gymnasts = await Gymnast.find(filter)
@@ -448,22 +443,27 @@ router.get('/by-rotation', async (req, res) => {
 // Obtener grupos disponibles (distinct group numbers) para un torneo y turno
 router.get('/groups', async (req, res) => {
   try {
-    const { tournamentId, turno } = req.query;
+    const { tournamentId, turno, apparatus } = req.query;
     if (!tournamentId) return res.status(400).json({ error: 'tournamentId requerido' });
     if (!mongoose.Types.ObjectId.isValid(tournamentId as string)) return res.status(400).json({ error: 'tournamentId inválido' });
 
     const tournamentObjectId = new mongoose.Types.ObjectId(tournamentId as string);
-    
+
     // Filter by tournaments array
     const filter: any = { 'tournaments.tournament': tournamentObjectId };
     if (turno) {
-      filter['tournaments'] = { 
-        $elemMatch: { 
-          tournament: tournamentObjectId, 
-          turno: turno 
-        } 
+      filter['tournaments'] = {
+        $elemMatch: {
+          tournament: tournamentObjectId,
+          turno: turno
+        }
       };
     }
+    // Mismo filtro de género que /by-rotation: si el aparato elegido es exclusivo de
+    // un género, no tiene sentido ofrecer en el dropdown grupos que no tienen ningún
+    // gimnasta de ese género — confundía a los jueces ("elijo grupo y no hay nada").
+    const genderFilter = getGenderFilterForApparatus(apparatus as string);
+    if (genderFilter) filter.gender = genderFilter;
 
     const pipeline: any[] = [
       { $match: filter },
